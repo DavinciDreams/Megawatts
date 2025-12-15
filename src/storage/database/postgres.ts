@@ -1,6 +1,6 @@
 import { Pool, PoolClient, PoolConfig, QueryResult } from 'pg';
 import { Logger } from '../../utils/logger';
-import { StorageError } from '../errors';
+import { DatabaseError, DatabaseErrorCode } from '../errors';
 
 export interface PostgresConfig extends PoolConfig {
   maxConnections?: number;
@@ -12,7 +12,7 @@ export interface PostgresConfig extends PoolConfig {
 export class PostgresConnectionManager {
   private pool: Pool;
   private logger: Logger;
-  private healthCheckTimer?: NodeJS.Timeout;
+  private healthCheckTimer?: ReturnType<typeof setInterval>;
   private isConnected = false;
 
   constructor(private config: PostgresConfig) {
@@ -57,7 +57,7 @@ export class PostgresConnectionManager {
       this.startHealthCheck();
     } catch (error) {
       this.logger.error('Failed to connect to PostgreSQL:', error);
-      throw new StorageError('DATABASE_CONNECTION_FAILED', 'Failed to connect to PostgreSQL', { error });
+      throw new DatabaseError(DatabaseErrorCode.CONNECTION_FAILED, 'Failed to connect to PostgreSQL', { error: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -72,20 +72,20 @@ export class PostgresConnectionManager {
       this.logger.info('Disconnected from PostgreSQL database');
     } catch (error) {
       this.logger.error('Error disconnecting from PostgreSQL:', error);
-      throw new StorageError('DATABASE_DISCONNECTION_FAILED', 'Failed to disconnect from PostgreSQL', { error });
+      throw new DatabaseError(DatabaseErrorCode.DISCONNECTION_FAILED, 'Failed to disconnect from PostgreSQL', { error: error instanceof Error ? error.message : String(error) });
     }
   }
 
   async getClient(): Promise<PoolClient> {
     if (!this.isConnected) {
-      throw new StorageError('DATABASE_NOT_CONNECTED', 'PostgreSQL is not connected');
+      throw new DatabaseError(DatabaseErrorCode.CONNECTION_FAILED, 'PostgreSQL is not connected');
     }
 
     try {
       return await this.pool.connect();
     } catch (error) {
       this.logger.error('Failed to get client from pool:', error);
-      throw new StorageError('CLIENT_ACQUISITION_FAILED', 'Failed to get client from pool', { error });
+      throw new DatabaseError(DatabaseErrorCode.CLIENT_ACQUISITION_FAILED, 'Failed to get client from pool', { error: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -101,7 +101,7 @@ export class PostgresConnectionManager {
       return result;
     } catch (error) {
       this.logger.error('Query execution failed:', { query: text, params, error });
-      throw new StorageError('QUERY_EXECUTION_FAILED', 'Query execution failed', { query: text, params, error });
+      throw new DatabaseError(DatabaseErrorCode.QUERY_EXECUTION_FAILED, 'Query execution failed', { error: error instanceof Error ? error.message : String(error) }, text, params);
     } finally {
       client.release();
     }
@@ -118,7 +118,7 @@ export class PostgresConnectionManager {
     } catch (error) {
       await client.query('ROLLBACK');
       this.logger.error('Transaction failed:', error);
-      throw new StorageError('TRANSACTION_FAILED', 'Transaction failed', { error });
+      throw new DatabaseError(DatabaseErrorCode.TRANSACTION_FAILED, 'Transaction failed', { error: error instanceof Error ? error.message : String(error) });
     } finally {
       client.release();
     }

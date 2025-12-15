@@ -1,3 +1,4 @@
+// Legacy configuration interface for backward compatibility
 export interface BotConfig {
   discordToken: string;
   clientId: string;
@@ -8,7 +9,7 @@ export interface BotConfig {
     database: string;
     user: string;
     password: string;
-  ssl: boolean;
+    ssl: boolean;
     maxConnections: number;
   };
   redis: {
@@ -50,14 +51,15 @@ export interface BotConfig {
     };
     fileStorage: {
       provider: 's3' | 'local';
-    s3: {
-      bucket: string;
-      region: string;
-      accessKeyId: string;
-      secretAccessKey: string;
-    };
-    local: {
-      basePath: string;
+      s3: {
+        bucket: string;
+        region: string;
+        accessKeyId: string;
+        secretAccessKey: string;
+      };
+      local: {
+        basePath: string;
+      };
     };
   };
   security: {
@@ -85,12 +87,12 @@ export interface BotConfig {
   };
 }
 
-// Configuration validation and management
+// Legacy configuration manager for backward compatibility
 export class ConfigManager {
   private config: BotConfig;
-  private logger: Logger;
+  private logger: any;
 
-  constructor(logger: Logger) {
+  constructor(logger: any) {
     this.config = new BotConfig();
     this.logger = logger;
   }
@@ -162,7 +164,7 @@ export enum GatewayIntent {
   Ping = 'ping',
   Status = 'status',
   Config = 'config',
-  SselfEdit = 'self_edit',
+  SelfEdit = 'self_edit',
   Analyze = 'analyze',
   Optimize = 'optimize'
 }
