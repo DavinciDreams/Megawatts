@@ -5,7 +5,6 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile.prod
-    container_name: discord-bot-staging
     depends_on:
       postgres:
         condition: service_healthy
@@ -40,22 +39,23 @@ services:
       update_config:
         parallelism: 1
         failure_action: rollback
-        order: start
+        order: start-first
         delay: 10s
       restart_policy:
         condition: on-failure
         delay: 5s
         max_attempts: 3
         window: 120s
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 384M
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-    resource_limits:
-      cpus: '0.75'
-      memory: 384M
     logging:
       driver: "json-file"
       options:
@@ -85,15 +85,16 @@ services:
         condition: on-failure
         delay: 5s
         max_attempts: 3
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER_STAGING} -d ${DB_NAME_STAGING:-discord_bot_staging}"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
-    resource_limits:
-      cpus: '0.5'
-      memory: 256M
     logging:
       driver: "json-file"
       options:
@@ -112,15 +113,17 @@ services:
     networks:
       - bot-network
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
     healthcheck:
       test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
-    resource_limits:
-      cpus: '0.25'
-      memory: 128M
     logging:
       driver: "json-file"
       options:

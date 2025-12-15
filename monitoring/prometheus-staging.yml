@@ -1,0 +1,145 @@
+# Prometheus Configuration for Staging Environment
+# Monitors Discord Bot and its infrastructure components in staging
+
+global:
+  scrape_interval: 30s                # How frequently to scrape targets (increased for staging)
+  evaluation_interval: 30s             # How frequently to evaluate rules (increased for staging)
+  external_labels:
+    environment: 'staging'
+    service: 'discord-bot'
+
+# Rule files
+rule_files:
+  # - "first_rules.yml"
+  # - "second_rules.yml"
+
+# Alerting
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          # - alertmanager:9093
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 60s               # Increased for staging
+    metrics_path: /metrics
+
+  # Discord Bot Application
+  - job_name: 'discord-bot'
+    static_configs:
+      - targets: ['app:8080']
+    scrape_interval: 30s               # Increased for staging
+    metrics_path: /metrics
+    params:
+      format: ['prometheus']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'discord-bot-staging'
+
+  # PostgreSQL Database
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres:5432']
+    scrape_interval: 60s               # Increased for staging
+    metrics_path: /metrics
+    # Note: This requires postgres_exporter to be running
+    # relabel_configs:
+    #   - source_labels: [__address__]
+    #     target_label: instance
+    #     replacement: 'postgres-staging'
+
+  # Redis Cache
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis:6379']
+    scrape_interval: 60s               # Increased for staging
+    metrics_path: /metrics
+    # Note: This requires redis_exporter to be running
+    # relabel_configs:
+    #   - source_labels: [__address__]
+    #     target_label: instance
+    #     replacement: 'redis-staging'
+
+  # Nginx Reverse Proxy
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['nginx:80']
+    scrape_interval: 60s               # Increased for staging
+    metrics_path: /metrics
+    # Note: This requires nginx_exporter to be running
+    # relabel_configs:
+    #   - source_labels: [__address__]
+    #     target_label: instance
+    #     replacement: 'nginx-staging'
+
+  # Node Exporter (for system metrics)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 60s               # Increased for staging
+    metrics_path: /metrics
+    # Note: This requires node_exporter to be running
+    # relabel_configs:
+    #   - source_labels: [__address__]
+    #     target_label: instance
+    #     replacement: 'node-staging'
+
+  # Docker Container Metrics
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    scrape_interval: 60s               # Increased for staging
+    metrics_path: /metrics
+    # Note: This requires cadvisor to be running
+    # relabel_configs:
+    #   - source_labels: [__address__]
+    #     target_label: instance
+    #     replacement: 'docker-staging'
+
+  # Grafana
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+    scrape_interval: 60s               # Increased for staging
+    metrics_path: /metrics
+    # relabel_configs:
+    #   - source_labels: [__address__]
+    #     target_label: instance
+    #     replacement: 'grafana-staging'
+
+  # Discord API Health Check
+  - job_name: 'discord-api'
+    metrics_path: /api/v10/gateway
+    static_configs:
+      - targets: ['discord.com']
+    scrape_interval: 120s              # Increased for staging
+    scheme: https
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'discord-api'
+      - source_labels: [__address__]
+        target_label: __address__
+        replacement: 'discord.com'
+      - source_labels: [__metrics_path__]
+        target_label: __metrics_path__
+        replacement: /api/v10/gateway
+
+# Remote write configuration (for long-term storage)
+# remote_write:
+#   - url: "http://remote-storage:9201/api/v1/write"
+#     queue_config:
+#       max_samples_per_send: 500       # Reduced for staging
+#       max_shards: 100                 # Reduced for staging
+#       capacity: 1250                  # Reduced for staging
+
+# Remote read configuration (for querying long-term storage)
+# remote_read:
+#   - url: "http://remote-storage:9201/api/v1/read"
+#     read_recent: true

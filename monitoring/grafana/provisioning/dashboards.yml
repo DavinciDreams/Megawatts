@@ -1,0 +1,35 @@
+# Grafana Dashboard Configuration
+# Automatically loads dashboards from the specified directory
+
+apiVersion: 1
+
+providers:
+  - name: 'Discord Bot Dashboards'
+    orgId: 1
+    folder: 'Discord Bot'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+
+  - name: 'System Dashboards'
+    orgId: 1
+    folder: 'System'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+
+  - name: 'Default'
+    orgId: 1
+    folder: ''
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
