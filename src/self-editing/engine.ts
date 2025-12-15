@@ -39,7 +39,7 @@ export class SelfEditingEngine {
       this.logger.debug('Performance analysis completed', metrics);
       
       return metrics;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error('Performance analysis failed:', error);
       throw new BotError('Performance analysis failed', 'medium', { context: error });
     } finally {
@@ -72,7 +72,7 @@ export class SelfEditingEngine {
         confidence: this.calculateFeedbackConfidence(feedbackData),
         actionTaken: {
           type: 'analysis',
-          description: 'Analyzed user feedback and generated improvement suggestions',
+          description: 'Analyzed user Feedback and generated improvement suggestions',
           result: 'success',
         },
       };
@@ -81,7 +81,7 @@ export class SelfEditingEngine {
       this.logger.debug('User feedback analysis completed', metrics);
       
       return metrics;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error('User feedback analysis failed:', error);
       throw new BotError('User feedback analysis failed', 'medium', { context: error });
     }
@@ -116,9 +116,9 @@ export class SelfEditingEngine {
       this.logger.debug('Code quality analysis completed', metrics);
       
       return metrics;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error('Code quality analysis failed:', error);
-      throw new BotError('Code quality analysis failed', 'medium', { context: error });
+      throw new BotError('Code quality failed', 'medium', { context: error });
     }
   }
 
@@ -148,7 +148,7 @@ export class SelfEditingEngine {
       this.logger.debug('Behavioral adaptation completed', metrics);
       
       return metrics;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error('Behavioral adaptation failed:', error);
       throw new BotError('Behavioral adaptation failed', 'medium', { context: error });
     }
@@ -214,7 +214,7 @@ export class SelfEditingEngine {
     const suggestions: string[] = [];
     
     if (feedback.length < this.config.userFeedback.minInteractions) {
-      suggestions.push('Increase user engagement to gather more feedback');
+      suggestions.push('Increase user engagement to gather more Feedback');
     }
     
     const negativeSentiment = this.calculateSentiment(feedback).negative;
@@ -311,11 +311,11 @@ export class SelfEditingEngine {
     const avgResponseTime = recentMetrics.reduce((sum, m) => sum + (m.metrics.responseTime as number), 0) / recentMetrics.length;
     const avgErrorRate = recentMetrics.reduce((sum, m) => sum + (m.metrics.errorRate as number), 0) / recentMetrics.length;
 
-    if (avgResponseTime > this.config.performance.thresholds.responseTime) {
+    if (avgResponseTime > (this.config.performance?.thresholds?.responseTime || 1000)) {
       adaptations.push('Optimize response processing to reduce latency');
     }
 
-    if (avgErrorRate > this.config.performance.thresholds.errorRate) {
+    if (avgErrorRate > (this.config.performance?.thresholds?.errorRate || 0.05)) {
       adaptations.push('Implement additional error handling and validation');
     }
 
@@ -329,14 +329,18 @@ export class SelfEditingEngine {
   private calculatePerformanceImprovement(recentMetrics: SelfEditingMetrics[]): number {
     if (recentMetrics.length < 2) return 0;
     
-    const oldest = recentMetrics[0].metrics.responseTime as number;
-    const newest = recentMetrics[recentMetrics.length - 1].metrics.responseTime as number;
+    const oldest = recentMetrics[0]?.metrics.responseTime as number;
+    const newest = recentMetrics[recentMetrics.length - 1]?.metrics.responseTime as number;
     
-    return ((oldest - newest) / oldest) * 100; // Percentage improvement
+    if (oldest && newest) {
+      return ((oldest - newest) / oldest) * 100; // Percentage improvement
+    }
+    
+    return 0;
   }
 
   private predictUserSatisfaction(recentMetrics: SelfEditingMetrics[]): number {
-    // Mock prediction based on performance and feedback metrics
+    // Mock prediction based on performance and Feedback metrics
     const performanceScore = this.calculatePerformanceScore(recentMetrics);
     const feedbackScore = this.calculateFeedbackScore(recentMetrics);
     

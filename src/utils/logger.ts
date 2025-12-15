@@ -1,4 +1,5 @@
 export enum LogLevel {
+  DEBUG = 'debug',
   INFO = 'info',
   WARN = 'warn',
   ERROR = 'error'
@@ -8,7 +9,7 @@ export interface LogEntry {
   timestamp: Date;
   level: LogLevel;
   message: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, any> | undefined;
 }
 
 export class Logger {
@@ -54,5 +55,33 @@ export class Logger {
         stack: error?.stack
       }
     });
+  }
+
+  debug(message: string, metadata?: Record<string, any>): void {
+    this.log({
+      timestamp: new Date(),
+      level: LogLevel.DEBUG,
+      message,
+      metadata
+    });
+  }
+
+  private log(entry: LogEntry): void {
+    const formattedMessage = this.formatMessage(entry);
+    
+    switch (entry.level) {
+      case LogLevel.DEBUG:
+        console.debug(formattedMessage);
+        break;
+      case LogLevel.INFO:
+        console.log(formattedMessage);
+        break;
+      case LogLevel.WARN:
+        console.warn(formattedMessage);
+        break;
+      case LogLevel.ERROR:
+        console.error(formattedMessage);
+        break;
+    }
   }
 }

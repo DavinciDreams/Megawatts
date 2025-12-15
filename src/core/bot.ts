@@ -81,9 +81,9 @@ export class DiscordBot {
       this.logger.debug(`Received message from ${message.author.tag}: ${message.content}`);
       
       // Handle commands and self-editing logic will be implemented in separate modules
-      // This is just the basic message routing
+      // This is just basic message routing
     } catch (error) {
-      this.handleError(error);
+      this.handleError(error as BotError);
     }
   }
 
