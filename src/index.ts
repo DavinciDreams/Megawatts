@@ -1,4 +1,9 @@
 import { Client, GatewayIntentBits, Message } from 'discord.js';
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import { HealthManager } from './core/health';
+import { Logger as UtilsLogger } from './utils/logger';
 
 // Custom bot intents for command handling
 enum BotIntent {
@@ -41,6 +46,8 @@ class BotConfig {
     this.settings.set('DISCORD_TOKEN', process.env.DISCORD_TOKEN || '');
     this.settings.set('DISCORD_CLIENT_ID', process.env.DISCORD_CLIENT_ID || '');
     this.settings.set('NODE_ENV', process.env.NODE_ENV || 'development');
+    this.settings.set('HTTP_PORT', process.env.HTTP_PORT || '8080');
+    this.settings.set('HTTP_HOST', process.env.HTTP_HOST || '0.0.0.0');
   }
 
   get(key: string): any {
@@ -52,11 +59,119 @@ class BotConfig {
   }
 }
 
+// HTTP Server class for health endpoints
+class HealthServer {
+  private app: express.Application;
+  private server: any;
+  private logger: Logger;
+  private healthManager: HealthManager;
+  private port: number;
+  private host: string;
+
+  constructor(healthManager: HealthManager, config: BotConfig) {
+    this.app = express();
+    this.healthManager = healthManager;
+    this.logger = new UtilsLogger('HealthServer');
+    this.port = parseInt(config.get('HTTP_PORT'));
+    this.host = config.get('HTTP_HOST');
+    
+    this.setupMiddleware();
+    this.setupRoutes();
+  }
+
+  private setupMiddleware(): void {
+    // Security middleware
+    this.app.use(helmet());
+    this.app.use(cors());
+    
+    // Body parsing middleware
+    this.app.use(express.json());
+    this.app.use(express.urlencoded({ extended: true }));
+    
+    // Request logging middleware
+    this.app.use((req: express.Request, res: express.Response, next: express.NextFunction) => {
+      this.logger.info(`${req.method} ${req.path}`);
+      next();
+    });
+  }
+
+  private setupRoutes(): void {
+    // Setup health endpoints
+    this.healthManager.setupEndpoints(this.app);
+    
+    // Root endpoint
+    this.app.get('/', (req: express.Request, res: express.Response) => {
+      res.json({
+        name: 'Self-Editing Discord Bot',
+        version: '1.0.0',
+        status: 'running',
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // 404 handler
+    this.app.use('*', (req: express.Request, res: express.Response) => {
+      res.status(404).json({
+        error: 'Not Found',
+        path: req.originalUrl,
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    // Error handler
+    this.app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+      this.logger.error('Unhandled error in health server', err);
+      res.status(500).json({
+        error: 'Internal Server Error',
+        timestamp: new Date().toISOString()
+      });
+    });
+  }
+
+  async start(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        this.server = this.app.listen(this.port, this.host, () => {
+          this.logger.info(`Health server started on http://${this.host}:${this.port}`);
+          resolve();
+        });
+
+        this.server.on('error', (error: any) => {
+          if (error.code === 'EADDRINUSE') {
+            this.logger.error(`Port ${this.port} is already in use`);
+          } else {
+            this.logger.error('Failed to start health server', error);
+          }
+          reject(error);
+        });
+      } catch (error) {
+        this.logger.error('Failed to start health server', error as Error);
+        reject(error);
+      }
+    });
+  }
+
+  async stop(): Promise<void> {
+    return new Promise((resolve) => {
+      if (this.server) {
+        this.server.close(() => {
+          this.logger.info('Health server stopped');
+          resolve();
+        });
+      } else {
+        resolve();
+      }
+    });
+  }
+}
+
 // Core bot class with self-editing capabilities
 class SelfEditingDiscordBot {
   private client!: Client;
   private logger: Logger;
   private config: BotConfig;
+  private healthManager: HealthManager;
+  private healthServer: HealthServer;
   private isReady: boolean = false;
 
   constructor(
@@ -66,11 +181,22 @@ class SelfEditingDiscordBot {
   ) {
     this.logger = logger || new Logger();
     this.config = config || new BotConfig();
+    this.healthManager = new HealthManager();
+    this.healthServer = new HealthServer(this.healthManager, this.config);
   }
 
-  // Initialize Discord client
+  // Initialize Discord client and health server
   async initialize(): Promise<void> {
     try {
+      // Initialize health manager first
+      await this.healthManager.initialize();
+      this.logger.info('Health manager initialized');
+
+      // Start health server
+      await this.healthServer.start();
+      this.logger.info('Health server started');
+
+      // Initialize Discord client
       this.client = new Client({
         intents: [
           GatewayIntentBits.Guilds,
@@ -92,11 +218,33 @@ class SelfEditingDiscordBot {
         await this.handleMessage(message);
       });
 
-      this.client.login(this.token);
+      await this.client.login(this.token);
       this.logger.info('Bot initialization complete');
     } catch (error) {
       this.logger.error('Failed to initialize bot:', error as Error);
       throw error;
+    }
+  }
+
+  // Graceful shutdown
+  async shutdown(): Promise<void> {
+    this.logger.info('Starting graceful shutdown...');
+    
+    try {
+      // Stop health server
+      await this.healthServer.stop();
+      
+      // Destroy Discord client
+      if (this.client && this.client.isReady()) {
+        this.client.destroy();
+      }
+      
+      // Destroy health manager
+      this.healthManager.destroy();
+      
+      this.logger.info('Graceful shutdown completed');
+    } catch (error) {
+      this.logger.error('Error during shutdown:', error as Error);
     }
   }
 
@@ -277,21 +425,52 @@ async function main() {
     logger.error('Failed to start bot:', error as Error);
     process.exit(1);
   }
+
+  return bot;
 }
 
 // Handle graceful shutdown
-process.on('SIGINT', () => {
-  console.log('\nReceived SIGINT. Shutting down gracefully...');
+let isShuttingDown = false;
+let botInstance: SelfEditingDiscordBot | null = null;
+
+async function handleShutdown(signal: string) {
+  if (isShuttingDown) {
+    console.log(`\nAlready shutting down, ignoring ${signal}...`);
+    return;
+  }
+  
+  isShuttingDown = true;
+  console.log(`\nReceived ${signal}. Shutting down gracefully...`);
+  
+  if (botInstance) {
+    try {
+      await botInstance.shutdown();
+    } catch (error) {
+      console.error('Error during shutdown:', error);
+    }
+  }
+  
   process.exit(0);
+}
+
+process.on('SIGINT', () => handleShutdown('SIGINT'));
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  process.exit(1);
 });
 
-process.on('SIGTERM', () => {
-  console.log('\nReceived SIGTERM. Shutting down gracefully...');
-  process.exit(0);
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
 });
 
 // Start the bot
-main().catch(error => {
+main().then(bot => {
+  botInstance = bot;
+}).catch(error => {
   console.error('Unhandled error during startup:', error);
   process.exit(1);
 });

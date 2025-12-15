@@ -40,7 +40,10 @@
     "src/storage",
     "src/tools",
     "src/utils",
-    "src/core"
+    "src/core",
+    "src/config",
+    "src/scripts",
+    "src/ai"
   ],
   "ts-node": {
     "version": "10.0.0",
