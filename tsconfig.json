@@ -14,8 +14,8 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "isolatedModules": true,
-    "noEmit": true,
+    "isolatedModules": false,
+    "noEmit": false,
     "incremental": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitAny": true,
@@ -23,15 +23,11 @@
     "strictFunctionTypes": true,
     "strictBindCallApply": true,
     "strictPropertyInitialization": true,
-    "strictPropertyAssignment": true,
-    "strictBindCallApply": true,
     "noImplicitOverride": true,
     "exactOptionalPropertyTypes": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "allowUnusedLabels": true,
-    "importsNotUsedAsValues": true
+    "allowUnusedLabels": true
   },
   "include": [
     "src/**/*"

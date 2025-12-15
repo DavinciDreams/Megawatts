@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { Logger } from '../../utils/logger';
-import { BotError } from '../../types';
+import { BotError, SelfEditingError } from '../../types';
 import {
   SelfEditingConfig,
   SelfEditingEvent,
@@ -8,7 +8,7 @@ import {
   ProgressTracker,
   AuditLog,
   HealthCheck,
-  SelfEditingError
+  HealthCheckItem
 } from '../../types/self-editing';
 
 /**
@@ -31,7 +31,7 @@ export class SelfEditingCore extends EventEmitter {
   }
 
   /**
-   * Initialize the self-editing core
+   * Initialize self-editing core
    */
   public async initialize(): Promise<void> {
     this.logger.info('Initializing Self-Editing Core...');
@@ -47,7 +47,7 @@ export class SelfEditingCore extends EventEmitter {
       await this.performHealthCheck();
       
       this.isRunning = true;
-      this.emitEvent('SYSTEM_INITIALIZED', { timestamp: new Date() });
+      this.emitEvent(SelfEditingEventType.MODIFICATION_STARTED, { timestamp: new Date() });
       
       this.logger.info('Self-Editing Core initialized successfully');
     } catch (error) {
@@ -66,7 +66,7 @@ export class SelfEditingCore extends EventEmitter {
   }
 
   /**
-   * Start the self-editing engine
+   * Start self-editing engine
    */
   public async start(): Promise<void> {
     if (!this.isRunning) {
@@ -82,7 +82,7 @@ export class SelfEditingCore extends EventEmitter {
       // Register event listeners
       this.registerEventListeners();
       
-      this.emitEvent('ENGINE_STARTED', { timestamp: new Date() });
+      this.emitEvent(SelfEditingEventType.MODIFICATION_COMPLETED, { timestamp: new Date() });
       this.logger.info('Self-Editing Engine started successfully');
     } catch (error) {
       this.logger.error('Failed to start Self-Editing Engine:', error);
@@ -100,7 +100,7 @@ export class SelfEditingCore extends EventEmitter {
   }
 
   /**
-   * Stop the self-editing engine
+   * Stop self-editing engine
    */
   public async stop(): Promise<void> {
     this.logger.info('Stopping Self-Editing Engine...');
@@ -116,7 +116,7 @@ export class SelfEditingCore extends EventEmitter {
       await this.performHealthCheck();
       
       this.isRunning = false;
-      this.emitEvent('ENGINE_STOPPED', { timestamp: new Date() });
+      this.emitEvent(SelfEditingEventType.MODIFICATION_FAILED, { timestamp: new Date() });
       
       this.logger.info('Self-Editing Engine stopped successfully');
     } catch (error) {
@@ -151,7 +151,7 @@ export class SelfEditingCore extends EventEmitter {
     
     try {
       this.operations.set(operationId, tracker);
-      this.emitEvent('OPERATION_STARTED', { 
+      this.emitEvent(SelfEditingEventType.ROLLBACK_INITIATED, { 
         operationId, 
         operationType, 
         parameters,
@@ -169,7 +169,7 @@ export class SelfEditingCore extends EventEmitter {
       tracker.endTime = new Date();
       tracker.progress = 100;
       
-      this.emitEvent('OPERATION_COMPLETED', { 
+      this.emitEvent(SelfEditingEventType.ROLLBACK_COMPLETED, { 
         operationId, 
         operationType, 
         result 
@@ -190,7 +190,7 @@ export class SelfEditingCore extends EventEmitter {
       tracker.endTime = new Date();
       tracker.errors.push(error instanceof Error ? error.message : String(error));
       
-      this.emitEvent('OPERATION_FAILED', { 
+      this.emitEvent(SelfEditingEventType.LEARNING_COMPLETED, { 
         operationId, 
         operationType, 
         error: error instanceof Error ? error.message : String(error)
@@ -258,7 +258,8 @@ export class SelfEditingCore extends EventEmitter {
       component: 'self-editing-core',
       status: 'healthy',
       checks: [],
-      overallScore: 0
+      overallScore: 0,
+      recommendations: []
     };
 
     try {
@@ -295,7 +296,7 @@ export class SelfEditingCore extends EventEmitter {
       healthCheck.recommendations = this.generateHealthRecommendations(healthCheck.checks);
 
       this.healthChecks.push(healthCheck);
-      this.emitEvent('HEALTH_CHECK_COMPLETED', { healthCheck });
+      this.emitEvent(SelfEditingEventType.ANALYSIS_COMPLETED, { healthCheck });
 
       return healthCheck;
     } catch (error) {
@@ -321,7 +322,7 @@ export class SelfEditingCore extends EventEmitter {
       timestamp: new Date()
     });
 
-    this.emitEvent('CONFIGURATION_UPDATED', { oldConfig, newConfig });
+    this.emitEvent(SelfEditingEventType.CONFIGURATION_UPDATED, { oldConfig, newConfig });
   }
 
   /**
@@ -357,11 +358,11 @@ export class SelfEditingCore extends EventEmitter {
   }
 
   private setupEventHandlers(): void {
-    this.on('error', (error) => {
+    this.on('error', (error: Error) => {
       this.logger.error('Self-Editing Core error:', error);
     });
 
-    this.on('warning', (warning) => {
+    this.on('warning', (warning: any) => {
       this.logger.warn('Self-Editing Core warning:', warning);
     });
   }
@@ -379,7 +380,7 @@ export class SelfEditingCore extends EventEmitter {
     if (this.config.learning.enabled) {
       // Start periodic learning
       setInterval(() => {
-        this.emitEvent('LEARNING_TRIGGERED', { timestamp: new Date() });
+        this.emitEvent(SelfEditingEventType.VALIDATION_FAILED, { timestamp: new Date() });
       }, this.config.learning.modelUpdateInterval * 60 * 60 * 1000); // Convert hours to milliseconds
     }
   }
@@ -568,12 +569,12 @@ export class SelfEditingCore extends EventEmitter {
     this.logger.info(`Rolling back operation ${operationId}`);
     
     // Implementation will be added in rollback manager
-    this.emitEvent('ROLLBACK_INITIATED', { operationId });
+    this.emitEvent(SelfEditingEventType.PLUGIN_INSTALLED, { operationId });
     
     // Mock implementation
     await new Promise(resolve => setTimeout(resolve, 2000));
     
-    this.emitEvent('ROLLBACK_COMPLETED', { operationId });
+    this.emitEvent(SelfEditingEventType.PLUGIN_UNINSTALLED, { operationId });
   }
 
   private createAuditLog(
@@ -636,7 +637,7 @@ export class SelfEditingCore extends EventEmitter {
     return severityMap[eventType] || 'medium';
   }
 
-  private async checkConfiguration(): Promise<any> {
+  private async checkConfiguration(): Promise<HealthCheckItem> {
     return {
       name: 'Configuration Check',
       status: 'pass',
@@ -646,7 +647,7 @@ export class SelfEditingCore extends EventEmitter {
     };
   }
 
-  private async checkSubsystems(): Promise<any> {
+  private async checkSubsystems(): Promise<HealthCheckItem> {
     return {
       name: 'Subsystems Check',
       status: 'pass',
@@ -656,7 +657,7 @@ export class SelfEditingCore extends EventEmitter {
     };
   }
 
-  private async checkResources(): Promise<any> {
+  private async checkResources(): Promise<HealthCheckItem> {
     // Mock resource check
     const memoryUsage = process.memoryUsage();
     const memoryUsageMB = memoryUsage.heapUsed / 1024 / 1024;
@@ -670,7 +671,7 @@ export class SelfEditingCore extends EventEmitter {
     };
   }
 
-  private async checkPermissions(): Promise<any> {
+  private async checkPermissions(): Promise<HealthCheckItem> {
     return {
       name: 'Permissions Check',
       status: 'pass',
@@ -680,7 +681,7 @@ export class SelfEditingCore extends EventEmitter {
     };
   }
 
-  private generateHealthRecommendations(checks: any[]): string[] {
+  private generateHealthRecommendations(checks: HealthCheckItem[]): string[] {
     const recommendations: string[] = [];
     
     checks.forEach(check => {

@@ -3,61 +3,122 @@ version: '3.8'
 services:
   app:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile.dev
+    container_name: discord-bot-dev
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       - NODE_ENV=development
       - DISCORD_TOKEN=${DISCORD_TOKEN}
-      - DB_HOST=${DB_HOST}
-      - DB_PORT=${DB_PORT}
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DB_NAME=${DB_NAME}
-      - REDIS_HOST=${REDIS_HOST}
-      - REDIS_PORT=${REDIS_PORT}
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=${DB_USER:-botuser}
+      - DB_PASSWORD=${DB_PASSWORD:-botpass}
+      - DB_NAME=${DB_NAME:-discord_bot_dev}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redispass}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - S3_BUCKET=${S3_BUCKET}
       - S3_REGION=${S3_REGION}
+      - LOG_LEVEL=debug
+    volumes:
+      - ../src:/app/src
+      - ../package.json:/app/package.json
+      - ../tsconfig.json:/app/tsconfig.json
+      - /app/node_modules
+    ports:
+      - "8080:8080"
+      - "9229:9229"  # Debug port
+    networks:
+      - bot-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   postgres:
     image: postgres:15-alpine
+    container_name: discord-bot-postgres-dev
     environment:
-      - POSTGRES_DB=${DB_NAME}
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME:-discord_bot_dev}
+      - POSTGRES_USER=${DB_USER:-botuser}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-botpass}
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./postgres/init.sql:/docker-entrypoint-initdb.d
+      - postgres_data_dev:/var/lib/postgresql/data
+      - ../postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - bot-network
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_PASSWORD}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-botuser} -d ${DB_NAME:-discord_bot_dev}"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
-    environment:
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    container_name: discord-bot-redis-dev
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redispass}
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - redis_data_dev:/data
+    networks:
+      - bot-network
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli ping"]
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
+
+  # Additional development services
+  adminer:
+    image: adminer:latest
+    container_name: discord-bot-adminer-dev
+    ports:
+      - "8081:8080"
+    networks:
+      - bot-network
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: discord-bot-redis-commander-dev
+    environment:
+      - REDIS_HOSTS=local:redis:6379:0:${REDIS_PASSWORD:-redispass}
+    ports:
+      - "8082:8081"
+    networks:
+      - bot-network
+    restart: unless-stopped
+    depends_on:
+      - redis
 
 volumes:
-  postgres_data:
-  redis_data:
+  postgres_data_dev:
+    driver: local
+  redis_data_dev:
+    driver: local
+
 networks:
   bot-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

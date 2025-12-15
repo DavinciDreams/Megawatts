@@ -5,38 +5,38 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile.prod
-    container_name: discord-bot-prod
+    container_name: discord-bot-staging
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     environment:
-      - NODE_ENV=production
-      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - NODE_ENV=staging
+      - DISCORD_TOKEN=${DISCORD_TOKEN_STAGING}
       - DB_HOST=postgres
       - DB_PORT=5432
-      - DB_USER=${DB_USER}
-      - DB_PASSWORD=${DB_PASSWORD}
-      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER_STAGING}
+      - DB_PASSWORD=${DB_PASSWORD_STAGING}
+      - DB_NAME=${DB_NAME_STAGING:-discord_bot_staging}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - REDIS_PASSWORD=${REDIS_PASSWORD}
-      - REDIS_DB=${REDIS_DB:-0}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - S3_BUCKET=${S3_BUCKET}
+      - REDIS_PASSWORD=${REDIS_PASSWORD_STAGING}
+      - REDIS_DB=${REDIS_DB:-1}
+      - OPENAI_API_KEY=${OPENAI_API_KEY_STAGING}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY_STAGING}
+      - S3_BUCKET=${S3_BUCKET_STAGING}
       - S3_REGION=${S3_REGION}
-      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
-      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
-      - LOG_LEVEL=info
+      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID_STAGING}
+      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY_STAGING}
+      - LOG_LEVEL=debug
     ports:
       - "8080:8080"
     networks:
       - bot-network
     restart: unless-stopped
     deploy:
-      replicas: 3
+      replicas: 2
       update_config:
         parallelism: 1
         failure_action: rollback
@@ -54,8 +54,8 @@ services:
       retries: 3
       start_period: 40s
     resource_limits:
-      cpus: '1.0'
-      memory: 512M
+      cpus: '0.75'
+      memory: 384M
     logging:
       driver: "json-file"
       options:
@@ -64,29 +64,29 @@ services:
 
   postgres:
     image: postgres:15-alpine
-    container_name: discord-bot-postgres-prod
+    container_name: discord-bot-postgres-staging
     environment:
-      - POSTGRES_DB=${DB_NAME}
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME_STAGING:-discord_bot_staging}
+      - POSTGRES_USER=${DB_USER_STAGING}
+      - POSTGRES_PASSWORD=${DB_PASSWORD_STAGING}
       - POSTGRES_INITDB_ARGS="--encoding=UTF8 --data-checksum"
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
-      - postgres_data_prod:/var/lib/postgresql/data
+      - postgres_data_staging:/var/lib/postgresql/data
       - ../postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
-      - ../postgres/postgresql.conf:/etc/postgresql/postgresql.conf
+      - ../postgres/postgresql-staging.conf:/etc/postgresql/postgresql.conf
     networks:
       - bot-network
     restart: unless-stopped
     deploy:
-      replicas: 2
+      replicas: 1
       restart_policy:
         condition: on-failure
         delay: 5s
         max_attempts: 3
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER_STAGING} -d ${DB_NAME_STAGING:-discord_bot_staging}"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -102,13 +102,13 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: discord-bot-redis-prod
-    command: redis-server /usr/local/etc/redis/redis.conf --appendonly yes --requirepass ${REDIS_PASSWORD}
+    container_name: discord-bot-redis-staging
+    command: redis-server /usr/local/etc/redis/redis.conf --appendonly yes --requirepass ${REDIS_PASSWORD_STAGING}
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
-      - redis_data_prod:/data
-      - ../redis/redis.conf:/usr/local/etc/redis/redis.conf
+      - redis_data_staging:/data
+      - ../redis/redis-staging.conf:/usr/local/etc/redis/redis.conf
     networks:
       - bot-network
     restart: unless-stopped
@@ -127,15 +127,15 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Monitoring and logging services
+  # Staging monitoring
   prometheus:
     image: prom/prometheus:latest
-    container_name: discord-bot-prometheus
+    container_name: discord-bot-prometheus-staging
     ports:
-      - "9090:9090"
+      - "9091:9090"
     volumes:
-      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus_data:/prometheus
+      - ../monitoring/prometheus-staging.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data_staging:/prometheus
     networks:
       - bot-network
     restart: unless-stopped
@@ -144,56 +144,36 @@ services:
       - '--storage.tsdb.path=/prometheus'
       - '--web.console.libraries=/etc/prometheus/console_libraries'
       - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=200h'
+      - '--storage.tsdb.retention.time=72h'
       - '--web.enable-lifecycle'
 
   grafana:
     image: grafana/grafana:latest
-    container_name: discord-bot-grafana
+    container_name: discord-bot-grafana-staging
     ports:
-      - "3000:3000"
+      - "3001:3000"
     volumes:
-      - grafana_data:/var/lib/grafana
+      - grafana_data_staging:/var/lib/grafana
       - ../monitoring/grafana/provisioning:/etc/grafana/provisioning
       - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD_STAGING:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_DOMAIN=staging.example.com
     networks:
       - bot-network
     restart: unless-stopped
     depends_on:
       - prometheus
 
-  # Reverse proxy for load balancing
-  nginx:
-    image: nginx:alpine
-    container_name: discord-bot-nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ../nginx/nginx.conf:/etc/nginx/nginx.conf
-      - ../nginx/ssl:/etc/nginx/ssl
-    networks:
-      - bot-network
-    restart: unless-stopped
-    depends_on:
-      - app
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
 volumes:
-  postgres_data_prod:
+  postgres_data_staging:
     driver: local
-  redis_data_prod:
+  redis_data_staging:
     driver: local
-  prometheus_data:
+  prometheus_data_staging:
     driver: local
-  grafana_data:
+  grafana_data_staging:
     driver: local
 
 networks:
@@ -201,4 +181,4 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.21.0.0/16
+        - subnet: 172.22.0.0/16

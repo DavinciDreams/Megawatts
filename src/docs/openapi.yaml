@@ -1,0 +1,1123 @@
+openapi: 3.0.0
+info:
+  title: Self-Editing Discord Bot API
+  description: RESTful API for the self-editing Discord bot with AI-powered autonomous improvement capabilities
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: api-support@discord-bot.example.com
+    url: https://discord-bot.example.com/support
+  license:
+    name: MIT
+    url: https://github.com/your-org/self-editing-discord-bot/blob/main/LICENSE
+servers:
+  - url: http://localhost:8080/api/v1
+    description: Development server
+  - url: https://staging.discord-bot.example.com/api/v1
+    description: Staging server
+  - url: https://discord-bot.example.com/api/v1
+    description: Production server
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Check application health
+      description: Returns the health status of the bot and its dependencies
+      operationId: getHealth
+      responses:
+        '200':
+          description: Health check successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: Service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /bot/status:
+    get:
+      tags:
+        - Bot Management
+      summary: Get bot status
+      description: Returns the current status and statistics of the bot
+      operationId: getBotStatus
+      security:
+        - bearerAuth
+      responses:
+        '200':
+          description: Bot status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BotStatusResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /bot/restart:
+    post:
+      tags:
+        - Bot Management
+      summary: Restart bot
+      description: Restarts the bot application
+      operationId: restartBot
+      security:
+        - bearerAuth
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RestartRequest'
+      responses:
+        '200':
+          description: Restart initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /bot/shutdown:
+    post:
+      tags:
+        - Bot Management
+      summary: Shutdown bot
+      description: Gracefully shuts down the bot application
+      operationId: shutdownBot
+      security:
+        - bearerAuth
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ShutdownRequest'
+      responses:
+        '200':
+          description: Shutdown initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /self-editing/status:
+    get:
+      tags:
+        - Self-Editing
+      summary: Get self-editing status
+      description: Returns the current status and statistics of self-editing capabilities
+      operationId: getSelfEditingStatus
+      security:
+        - bearerAuth
+      responses:
+        '200':
+          description: Self-editing status retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfEditingStatusResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /self-editing/enable:
+    post:
+      tags:
+        - Self-Editing
+      summary: Enable self-editing
+      description: Enables the self-editing capabilities with specified configuration
+      operationId: enableSelfEditing
+      security:
+        - bearerAuth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EnableSelfEditingRequest'
+      responses:
+        '200':
+          description: Self-editing enabled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /self-editing/disable:
+    post:
+      tags:
+        - Self-Editing
+      summary: Disable self-editing
+      description: Disables the self-editing capabilities
+      operationId: disableSelfEditing
+      security:
+        - bearerAuth
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DisableSelfEditingRequest'
+      responses:
+        '200':
+          description: Self-editing disabled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /self-editing/history:
+    get:
+      tags:
+        - Self-Editing
+      summary: Get self-editing history
+      description: Returns the history of self-editing operations
+      operationId: getSelfEditingHistory
+      security:
+        - bearerAuth
+      parameters:
+        - name: limit
+          in: query
+          description: Number of items to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          description: Number of items to skip
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: type
+          in: query
+          description: Filter by edit type
+          schema:
+            type: string
+            enum: [performance, security, features]
+        - name: status
+          in: query
+          description: Filter by status
+          schema:
+            type: string
+            enum: [success, failed, rolled_back]
+      responses:
+        '200':
+          description: Self-editing history retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfEditingHistoryResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /self-editing/rollback:
+    post:
+      tags:
+        - Self-Editing
+      summary: Rollback self-editing
+      description: Rolls back to a previous version
+      operationId: rollbackSelfEditing
+      security:
+        - bearerAuth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RollbackRequest'
+      responses:
+        '200':
+          description: Rollback initiated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /ai/config:
+    get:
+      tags:
+        - AI Configuration
+      summary: Get AI configuration
+      description: Returns the current AI configuration and status
+      operationId: getAIConfig
+      security:
+        - bearerAuth
+      responses:
+        '200':
+          description: AI configuration retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIConfigResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /ai/config:
+    put:
+      tags:
+        - AI Configuration
+      summary: Update AI configuration
+      description: Updates the AI configuration
+      operationId: updateAIConfig
+      security:
+        - bearerAuth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AIConfigRequest'
+      responses:
+        '200':
+          description: AI configuration updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Invalid configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /analytics/overview:
+    get:
+      tags:
+        - Analytics
+      summary: Get analytics overview
+      description: Returns analytics overview for the specified period
+      operationId: getAnalyticsOverview
+      security:
+        - bearerAuth
+      parameters:
+        - name: period
+          in: query
+          description: Time period for analytics
+          required: true
+          schema:
+            type: string
+            enum: [1d, 7d, 30d, 90d]
+            default: 7d
+        - name: metrics
+          in: query
+          description: Specific metrics to return
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        '200':
+          description: Analytics overview retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyticsOverviewResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /analytics/performance:
+    get:
+      tags:
+        - Analytics
+      summary: Get performance metrics
+      description: Returns detailed performance metrics for the specified time range
+      operationId: getPerformanceMetrics
+      security:
+        - bearerAuth
+      parameters:
+        - name: start_date
+          in: query
+          description: Start date for metrics (ISO 8601)
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: end_date
+          in: query
+          description: End date for metrics (ISO 8601)
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: granularity
+          in: query
+          description: Data granularity
+          schema:
+            type: string
+            enum: [minute, hour, day]
+            default: hour
+      responses:
+        '200':
+          description: Performance metrics retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PerformanceMetricsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /config:
+    get:
+      tags:
+        - Configuration
+      summary: Get configuration
+      description: Returns the current bot configuration
+      operationId: getConfig
+      security:
+        - bearerAuth
+      responses:
+        '200':
+          description: Configuration retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /config:
+    put:
+      tags:
+        - Configuration
+      summary: Update configuration
+      description: Updates the bot configuration
+      operationId: updateConfig
+      security:
+        - bearerAuth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConfigRequest'
+      responses:
+        '200':
+          description: Configuration updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          description: Invalid configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /logs:
+    get:
+      tags:
+        - Logs
+      summary: Get application logs
+      description: Returns application logs with filtering options
+      operationId: getLogs
+      security:
+        - bearerAuth
+      parameters:
+        - name: level
+          in: query
+          description: Log level filter
+          schema:
+            type: string
+            enum: [debug, info, warn, error]
+        - name: start_date
+          in: query
+          description: Start date for logs (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: end_date
+          in: query
+          description: End date for logs (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          description: Number of log entries to return
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+        - name: search
+          in: query
+          description: Search term for log filtering
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Logs retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogsResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy, degraded]
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+        uptime:
+          type: integer
+          description: Uptime in seconds
+        checks:
+          type: object
+          properties:
+            database:
+              type: string
+              enum: [healthy, unhealthy, unknown]
+            redis:
+              type: string
+              enum: [healthy, unhealthy, unknown]
+            discord:
+              type: string
+              enum: [healthy, unhealthy, unknown]
+            ai_services:
+              type: string
+              enum: [healthy, unhealthy, unknown]
+
+    BotStatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [online, offline, maintenance]
+        guilds:
+          type: integer
+          description: Number of connected guilds
+        users:
+          type: integer
+          description: Number of active users
+        commands:
+          type: integer
+          description: Number of registered commands
+        uptime:
+          type: integer
+          description: Uptime in seconds
+        version:
+          type: string
+          description: Current bot version
+        environment:
+          type: string
+          enum: [development, staging, production]
+
+    SelfEditingStatusResponse:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        active:
+          type: boolean
+        last_edit:
+          type: object
+          properties:
+            timestamp:
+              type: string
+              format: date-time
+            type:
+              type: string
+              enum: [performance_optimization, security_fix, feature_addition, bug_fix]
+            success:
+              type: boolean
+            rollback_available:
+              type: boolean
+        statistics:
+          type: object
+          properties:
+            total_edits:
+              type: integer
+            successful_edits:
+              type: integer
+            failed_edits:
+              type: integer
+            rollbacks:
+              type: integer
+
+    SelfEditingHistoryResponse:
+      type: object
+      properties:
+        edits:
+          type: array
+          items:
+            $ref: '#/components/schemas/SelfEditingOperation'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    SelfEditingOperation:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier for the edit
+        timestamp:
+          type: string
+          format: date-time
+        type:
+          type: string
+          enum: [performance_optimization, security_fix, feature_addition, bug_fix]
+        description:
+          type: string
+          description: Human-readable description of the edit
+        status:
+          type: string
+          enum: [success, failed, rolled_back]
+        changes:
+          type: object
+          properties:
+            files_modified:
+              type: integer
+            lines_added:
+              type: integer
+            lines_removed:
+              type: integer
+        rollback_available:
+          type: boolean
+
+    EnableSelfEditingRequest:
+      type: object
+      required:
+        - enabled
+      properties:
+        enabled:
+          type: boolean
+          description: Whether to enable self-editing
+        scope:
+          type: array
+          items:
+            type: string
+            enum: [performance, security, features]
+          description: Types of edits to allow
+        auto_approve:
+          type: boolean
+          description: Whether to auto-approve edits
+        backup_before_edit:
+          type: boolean
+          description: Whether to create backup before editing
+
+    DisableSelfEditingRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          description: Reason for disabling self-editing
+        emergency:
+          type: boolean
+          description: Whether this is an emergency disable
+
+    RollbackRequest:
+      type: object
+      required:
+        - edit_id
+      properties:
+        edit_id:
+          type: string
+          description: ID of the edit to rollback to
+        reason:
+          type: string
+          description: Reason for the rollback
+        force:
+          type: boolean
+          description: Whether to force the rollback
+
+    AIConfigResponse:
+      type: object
+      properties:
+        providers:
+          type: object
+          properties:
+            openai:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                model:
+                  type: string
+                status:
+                  type: string
+                  enum: [healthy, unhealthy, unknown]
+                quota:
+                  type: object
+                  properties:
+                    used:
+                      type: integer
+                    limit:
+                      type: integer
+            anthropic:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                model:
+                  type: string
+                status:
+                  type: string
+                  enum: [healthy, unhealthy, unknown]
+                quota:
+                  type: object
+                  properties:
+                    used:
+                      type: integer
+                    limit:
+                      type: integer
+        fallback_enabled:
+          type: boolean
+        current_provider:
+          type: string
+          enum: [openai, anthropic]
+
+    AIConfigRequest:
+      type: object
+      properties:
+        providers:
+          type: object
+          properties:
+            openai:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                model:
+                  type: string
+                api_key:
+                  type: string
+            anthropic:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                model:
+                  type: string
+                api_key:
+                  type: string
+        fallback_enabled:
+          type: boolean
+        current_provider:
+          type: string
+          enum: [openai, anthropic]
+
+    AnalyticsOverviewResponse:
+      type: object
+      properties:
+        period:
+          type: string
+          description: Time period for the analytics
+        metrics:
+          type: object
+          properties:
+            users:
+              type: object
+              properties:
+                total:
+                  type: integer
+                active:
+                  type: integer
+                new:
+                  type: integer
+            interactions:
+              type: object
+              properties:
+                total:
+                  type: integer
+                commands:
+                  type: integer
+                messages:
+                  type: integer
+            performance:
+              type: object
+              properties:
+                avg_response_time:
+                  type: number
+                  description: Average response time in milliseconds
+                uptime_percentage:
+                  type: number
+                  description: Uptime percentage
+                error_rate:
+                  type: number
+                  description: Error rate as percentage
+
+    PerformanceMetricsResponse:
+      type: object
+      properties:
+        time_series:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+              response_time:
+                type: number
+              memory_usage:
+                type: number
+              cpu_usage:
+                type: number
+              active_connections:
+                type: integer
+        summary:
+          type: object
+          properties:
+            avg_response_time:
+              type: number
+            max_response_time:
+              type: number
+            min_response_time:
+              type: number
+            uptime_percentage:
+              type: number
+
+    ConfigResponse:
+      type: object
+      properties:
+        bot:
+          type: object
+          properties:
+            name:
+              type: string
+            version:
+              type: string
+            environment:
+              type: string
+              enum: [development, staging, production]
+        features:
+          type: object
+          properties:
+            self_editing:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                auto_approve:
+                  type: boolean
+            analytics:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                retention_days:
+                  type: integer
+            monitoring:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                alert_threshold:
+                  type: number
+        limits:
+          type: object
+          properties:
+            max_guilds:
+              type: integer
+            max_users_per_guild:
+              type: integer
+            command_rate_limit:
+              type: integer
+
+    ConfigRequest:
+      type: object
+      properties:
+        features:
+          type: object
+          properties:
+            self_editing:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                auto_approve:
+                  type: boolean
+            analytics:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                retention_days:
+                  type: integer
+            monitoring:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                alert_threshold:
+                  type: number
+        limits:
+          type: object
+          properties:
+            command_rate_limit:
+              type: integer
+
+    RestartRequest:
+      type: object
+      properties:
+        force:
+          type: boolean
+          description: Whether to force restart
+        reason:
+          type: string
+          description: Reason for restart
+
+    ShutdownRequest:
+      type: object
+      properties:
+        force:
+          type: boolean
+          description: Whether to force shutdown
+        reason:
+          type: string
+          description: Reason for shutdown
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: Operation completed successfully
+        timestamp:
+          type: string
+          format: date-time
+
+    ErrorResponse:
+      type: object
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code
+            message:
+              type: string
+              description: Human-readable error message
+            details:
+              type: object
+              description: Additional error details
+        timestamp:
+          type: string
+          format: date-time
+
+    Pagination:
+      type: object
+      properties:
+        total:
+          type: integer
+          description: Total number of items
+        limit:
+          type: integer
+          description: Number of items per page
+        offset:
+          type: integer
+          description: Number of items skipped
+        has_more:
+          type: boolean
+          description: Whether more items are available
+
+    LogsResponse:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+              level:
+                type: string
+                enum: [debug, info, warn, error]
+              message:
+                type: string
+              context:
+                type: object
+                properties:
+                  module:
+                    type: string
+                  function:
+                    type: string
+                  user_id:
+                    type: string
+                  guild_id:
+                    type: string
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+  examples:
+    HealthCheckSuccess:
+      summary: Successful health check
+      value:
+        status: healthy
+        timestamp: "2023-12-15T10:30:00.000Z"
+        version: "1.0.0"
+        uptime: 86400
+        checks:
+          database: healthy
+          redis: healthy
+          discord: healthy
+          ai_services: healthy
+
+    BotStatusSuccess:
+      summary: Successful bot status retrieval
+      value:
+        status: online
+        guilds: 15
+        users: 5000
+        commands: 25
+        uptime: 86400
+        version: "1.0.0"
+        environment: production
+
+    SelfEditingHistorySuccess:
+      summary: Successful self-editing history retrieval
+      value:
+        edits:
+          - id: "edit_123"
+            timestamp: "2023-12-15T09:00:00.000Z"
+            type: performance_optimization
+            description: "Optimized database query performance"
+            status: success
+            changes:
+              files_modified: 3
+              lines_added: 15
+              lines_removed: 8
+            rollback_available: true
+        pagination:
+          total: 150
+          limit: 50
+          offset: 0
+          has_more: true
+
+tags:
+  - name: Health
+    description: Health check operations
+  - name: Bot Management
+    description: Bot lifecycle and status management
+  - name: Self-Editing
+    description: Self-editing capabilities and history
+  - name: AI Configuration
+    description: AI service configuration and management
+  - name: Analytics
+    description: Analytics and metrics
+  - name: Configuration
+    description: Bot configuration management
+  - name: Logs
+    description: Application log retrieval

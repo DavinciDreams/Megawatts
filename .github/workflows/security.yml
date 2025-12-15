@@ -1,0 +1,415 @@
+name: Security Scanning
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM UTC
+  workflow_dispatch:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  # Dependency Security Scanning
+  dependency-scan:
+    name: Dependency Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: |
+          npm audit --audit-level=moderate --json > npm-audit.json || true
+          npm audit --audit-level=moderate
+
+      - name: Upload npm audit results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: npm-audit-results
+          path: npm-audit.json
+
+      - name: Run Snyk security scan
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high --json-file-output=snyk-results.json
+
+      - name: Upload Snyk results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: snyk-results
+          path: snyk-results.json
+
+      - name: Run OWASP Dependency Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: 'discord-bot'
+          path: '.'
+          format: 'JSON'
+          out: 'dependency-check-results'
+
+      - name: Upload OWASP results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: owasp-dependency-check
+          path: dependency-check-results/
+
+  # Container Security Scanning
+  container-scan:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    needs: dependency-scan
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -t discord-bot:security-scan .
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'discord-bot:security-scan'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Grype vulnerability scanner
+        uses: anchore/scan-action@v3
+        with:
+          image: 'discord-bot:security-scan'
+          format: 'sarif'
+          output-file: 'grype-results.sarif'
+
+      - name: Upload Grype results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'grype-results.sarif'
+
+      - name: Run Docker Scout
+        uses: docker/scout-action@v1
+        with:
+          image: 'discord-bot:security-scan'
+          only-severities: 'critical,high'
+
+  # Static Code Analysis
+  static-analysis:
+    name: Static Code Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+        with:
+          languages: typescript, javascript
+          queries: security-extended
+
+      - name: Run Semgrep security scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/owasp-top-ten
+            p/secrets
+            p/typescript
+          output: 'semgrep-results.sarif'
+
+      - name: Upload Semgrep results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'semgrep-results.sarif'
+
+      - name: Run ESLint security rules
+        run: |
+          npx eslint src/**/*.ts --config .eslintrc.security.json --format=json --output-file=eslint-security-results.json || true
+
+      - name: Upload ESLint security results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: eslint-security-results
+          path: eslint-security-results.json
+
+  # Secrets Detection
+  secrets-scan:
+    name: Secrets Detection
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+        with:
+          config-path: '.gitleaks.toml'
+          report-format: 'sarif'
+          output-file: 'gitleaks-results.sarif'
+
+      - name: Upload Gitleaks results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'gitleaks-results.sarif'
+
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: ${{ github.ref }}
+          extra_args: --debug --json
+
+      - name: Scan for hardcoded secrets
+        run: |
+          npx git-secrets --scan
+          npx detect-secrets scan --all-files --baseline .secrets.baseline || true
+
+  # Infrastructure Security Scanning
+  infrastructure-scan:
+    name: Infrastructure Security Scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: '1.5.0'
+
+      - name: Run Terraform security scan
+        run: |
+          cd infrastructure/
+          terraform init
+          terraform plan -out=tfplan
+          terraform show -json tfplan > tfplan.json
+
+      - name: Run Checkov
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: infrastructure/
+          framework: terraform
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+
+      - name: Upload Checkov results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'checkov-results.sarif'
+
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.0
+        with:
+          additional_args: '--out-format sarif --out tfsec-results.sarif'
+
+      - name: Upload tfsec results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'tfsec-results.sarif'
+
+  # Security Policy Enforcement
+  policy-check:
+    name: Security Policy Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for security policy compliance
+        run: |
+          # Check if PR has security review
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            PR_NUMBER="${{ github.event.number }}"
+            REVIEWS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+              "https://api.github.com/repos/${{ github.repository }}/pulls/$PR_NUMBER/reviews")
+            
+            SECURITY_REVIEW=$(echo "$REVIEWS" | jq -r '.[] | select(.user.login | test("security|sec")) | .state')
+            
+            if [ -z "$SECURITY_REVIEW" ]; then
+              echo "❌ Security review required for this PR"
+              exit 1
+            fi
+          fi
+
+      - name: Check for sensitive file changes
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            CHANGED_FILES=$(git diff --name-only HEAD~1)
+            SENSITIVE_FILES=(".env" "*.pem" "*.key" "id_rsa" "secrets/")
+            
+            for file in $CHANGED_FILES; do
+              for sensitive in "${SENSITIVE_FILES[@]}"; do
+                if [[ "$file" == $sensitive ]]; then
+                  echo "❌ Sensitive file detected in changes: $file"
+                  exit 1
+                fi
+              done
+            done
+          fi
+
+      - name: Validate security headers configuration
+        run: |
+          # Check if security headers are properly configured
+          if [ -f "nginx/nginx.conf" ]; then
+            if ! grep -q "X-Frame-Options" nginx/nginx.conf; then
+              echo "❌ X-Frame-Options header missing"
+              exit 1
+            fi
+            
+            if ! grep -q "X-Content-Type-Options" nginx/nginx.conf; then
+              echo "❌ X-Content-Type-Options header missing"
+              exit 1
+            fi
+            
+            if ! grep -q "Strict-Transport-Security" nginx/nginx.conf; then
+              echo "❌ HSTS header missing"
+              exit 1
+            fi
+          fi
+
+  # Security Report Generation
+  security-report:
+    name: Generate Security Report
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, container-scan, static-analysis, secrets-scan]
+    if: always()
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Generate security summary
+        run: |
+          echo "# Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Scan Results" >> $GITHUB_STEP_SUMMARY
+          
+          # Dependency scan results
+          if [ -f "npm-audit-results/npm-audit.json" ]; then
+            VULNS=$(cat npm-audit-results/npm-audit.json | jq '.metadata.vulnerabilities.total')
+            echo "- **Dependency Vulnerabilities**: $VULNS" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Container scan results
+          if [ -f "trivy-results.sarif" ]; then
+            HIGH_VULNS=$(cat trivy-results.sarif | jq '.runs[0].results[] | select(.level == "error") | length')
+            echo "- **Container High Vulnerabilities**: $HIGH_VULNS" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Static analysis results
+          if [ -f "semgrep-results.sarif" ]; then
+            ISSUES=$(cat semgrep-results.sarif | jq '.runs[0].results | length')
+            echo "- **Static Analysis Issues**: $ISSUES" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Secrets scan results
+          if [ -f "gitleaks-results.sarif" ]; then
+            SECRETS=$(cat gitleaks-results.sarif | jq '.runs[0].results | length')
+            echo "- **Secrets Found**: $SECRETS" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Recommendations" >> $GITHUB_STEP_SUMMARY
+          echo "- Review and fix all high and critical vulnerabilities" >> $GITHUB_STEP_SUMMARY
+          echo "- Update dependencies to latest secure versions" >> $GITHUB_STEP_SUMMARY
+          echo "- Implement security best practices in code" >> $GITHUB_STEP_SUMMARY
+          echo "- Regular security audits and penetration testing" >> $GITHUB_STEP_SUMMARY
+
+      - name: Create security issue if critical findings
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            
+            let criticalIssues = 0;
+            
+            // Check for critical vulnerabilities
+            if (fs.existsSync('trivy-results.sarif')) {
+              const trivy = JSON.parse(fs.readFileSync('trivy-results.sarif', 'utf8'));
+              criticalIssues += trivy.runs[0].results.filter(r => r.level === 'error').length;
+            }
+            
+            if (criticalIssues > 0) {
+              github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '🚨 Critical Security Issues Detected',
+                body: `Critical security issues were detected in the latest scan. Please review and address immediately.\n\n**Issues Found**: ${criticalIssues}`,
+                labels: ['security', 'critical']
+              });
+            }
+
+  # Security Notifications
+  notify-security:
+    name: Security Notifications
+    runs-on: ubuntu-latest
+    needs: [security-report]
+    if: always() && (needs.security-report.result == 'failure' || needs.dependency-scan.result == 'failure')
+    steps:
+      - name: Notify security team
+        uses: 8398a7/action-slack@v3
+        with:
+          status: failure
+          channel: '#security'
+          webhook_url: ${{ secrets.SECURITY_SLACK_WEBHOOK }}
+          text: |
+            🚨 SECURITY SCAN ALERT 🚨
+            
+            Security scans have detected critical issues that require immediate attention.
+            
+            Please review the scan results and take appropriate action.
+            
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref }}
+            Commit: ${{ github.sha }}
+
+      - name: Create security incident
+        if: needs.security-report.result == 'failure'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 Security Incident Detected',
+              body: `A security incident has been detected in the automated security scans.\n\n**Repository**: ${context.repo.repo}\n**Branch**: ${context.ref}\n**Commit**: ${context.sha}\n\nPlease investigate and address immediately.`,
+              labels: ['security', 'incident', 'urgent']
+            });

@@ -80,6 +80,42 @@ export class ValidationError extends Error {
   }
 }
 
+export class SelfEditingError extends Error {
+  public readonly code: string;
+  public readonly severity: 'low' | 'medium' | 'high' | 'critical';
+  public readonly context?: Record<string, any> | undefined;
+  public readonly component: string;
+  public readonly operation: string;
+  public readonly modificationId?: string;
+  public readonly pluginId?: string;
+  public readonly learningDataId?: string;
+  public readonly recoveryAction?: string;
+
+  constructor(
+    message: string,
+    severity: 'low' | 'medium' | 'high' | 'critical' = 'medium',
+    component: string = '',
+    operation: string = '',
+    modificationId?: string,
+    pluginId?: string,
+    learningDataId?: string,
+    recoveryAction?: string,
+    context?: Record<string, any>
+  ) {
+    super(message);
+    this.name = 'SelfEditingError';
+    this.code = 'SELF_EDITING_ERROR';
+    this.severity = severity;
+    this.component = component;
+    this.operation = operation;
+    this.modificationId = modificationId;
+    this.pluginId = pluginId;
+    this.learningDataId = learningDataId;
+    this.recoveryAction = recoveryAction;
+    this.context = context;
+  }
+}
+
 // Type guards for error handling
 export const isBotError = (error: unknown): error is BotError => {
   return error instanceof Error && error.name === 'BotError';
