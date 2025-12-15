@@ -157,22 +157,22 @@ export class RequestRouter {
 
     // Priority from user role/permissions
     if (request.userRole === 'admin' || request.userRole === 'moderator') {
-      return 'high';
+      return { level: 'high', score: 8 };
     }
 
     // Priority from urgency
     const urgency = this.assessUrgency(request);
-    if (urgency === 'critical') return 'urgent';
-    if (urgency === 'high') return 'high';
+    if (urgency === 'critical') return { level: 'urgent', score: 10 };
+    if (urgency === 'high') return { level: 'high', score: 8 };
 
     // Priority from content type
     const contentType = this.identifyContentType(request);
     if (contentType === 'emergency' || contentType === 'moderation') {
-      return 'high';
+      return { level: 'high', score: 8 };
     }
 
     // Default priority
-    return 'normal';
+    return { level: 'normal', score: 5 };
   }
 
   /**
@@ -346,7 +346,7 @@ export class RequestRouter {
     ];
 
     const lowerContent = content.toLowerCase();
-    let bestMatch = { type: 'unknown' as const, confidence: 0 };
+    let bestMatch: { type: 'question' | 'command' | 'greeting' | 'farewell' | 'moderation' | 'self_edit' | 'file_operation' | 'unknown', confidence: number } = { type: 'unknown', confidence: 0 };
 
     for (const intent of intents) {
       const matches = intent.keywords.filter(keyword => lowerContent.includes(keyword)).length;
@@ -564,8 +564,14 @@ export class RequestRouter {
     decision: RoutingDecision,
     request: RoutingRequest
   ): Promise<AIResponse> {
-    const provider = this.modelSelector.getProviderHealth()
-      .get(decision.provider);
+    const providerHealth = this.modelSelector.getProviderHealth();
+    // Get provider through public method instead of accessing private property
+    const availableProviders = this.modelSelector.getAvailableModels();
+    const provider = availableProviders.find(p => p.providerId === decision.provider);
+    
+    if (!provider) {
+      throw new Error(`Provider ${decision.provider} not available`);
+    }
     
     if (!provider) {
       throw new Error(`Provider ${decision.provider} not available`);
@@ -582,11 +588,6 @@ export class RequestRouter {
     this.activeRequests.set(requestId, activeRequest);
 
     try {
-      const provider = this.modelSelector['providers'].get(decision.provider);
-      if (!provider) {
-        throw new Error(`Provider ${decision.provider} not found`);
-      }
-      
       const response = await provider.generateResponse({
         id: requestId,
         model: decision.model,

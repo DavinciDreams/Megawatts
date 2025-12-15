@@ -800,6 +800,62 @@ export class ContextManager {
     if (messageCount > 30) stage = 'closing';
     
     return {
+      id: state.id,
+      userId: state.metadata.participants.values().next().value || 'unknown',
+      context: {
+        summary: state.summary,
+        entities: Array.from(state.entities.values()),
+        sentiment: state.sentiment,
+        intents: [],
+        userPreferences: {
+          language: 'en',
+          timezone: 'UTC',
+          communicationStyle: {
+            formality: 'casual',
+            verbosity: 'adaptive',
+            tone: 'friendly',
+            responseSpeed: 'normal'
+          },
+          privacy: {
+            dataCollection: true,
+            conversationHistory: true,
+            personalization: true,
+            analytics: true,
+            sharing: true
+          },
+          accessibility: {
+            fontSize: 'medium',
+            highContrast: false,
+            screenReader: false,
+            keyboardNavigation: false,
+            reducedMotion: false,
+            colorBlindMode: 'none'
+          },
+          aiPreferences: {
+            model: 'gpt-3.5-turbo',
+            temperature: 0.7,
+            maxTokens: 1000,
+            responseStyle: 'balanced',
+            toolUsage: 'balanced'
+          },
+          notifications: {
+            enabled: true,
+            types: [],
+            frequency: 'immediate',
+            channels: []
+          }
+        },
+        previousMessages: state.messages,
+        currentTopic: state.metadata.topic,
+        language: 'en',
+        timezone: 'UTC',
+        platform: 'discord',
+        tokenCount: state.tokenCount,
+        messageCount: state.messageCount,
+        lastActivity: state.lastActivity
+      },
+      history: state.messages,
+      nextSteps: this.predictNextIntents(state),
       stage,
       progress: Math.min(1.0, messageCount / 30),
       expectedNextIntents: this.predictNextIntents(state),

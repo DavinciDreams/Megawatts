@@ -56,6 +56,7 @@ export interface ModelCapability {
   quality?: number;
   cost?: number;
   description?: string;
+  type?: string;
 }
 
 export interface AIProviderConfig {
@@ -77,6 +78,8 @@ export interface ProviderConfig {
   retries?: number;
   customHeaders?: Record<string, string>;
   modelPath?: string;
+  rateLimit?: RateLimit;
+  fallback?: FallbackConfig;
 }
 
 export interface ProviderHealth {
@@ -776,7 +779,6 @@ export interface ResponsePersonalization {
   contextual: boolean;
   userId?: string;
   applied?: boolean;
-  adjustments?: PersonalizationAdjustment[];
   effectiveness?: number;
   feedback?: ResponseFeedback;
 }
@@ -796,6 +798,13 @@ export interface ResponseQuality {
   completeness: number;
   appropriateness: number;
   overall: number;
+}
+
+export interface ResponseFeedback {
+  rating?: number;
+  comment?: string;
+  type?: 'explicit' | 'implicit';
+  timestamp?: Date;
 }
 
 // ============================================================================
@@ -830,8 +839,12 @@ export interface AIConfiguration {
   };
   routing: {
     strategy: RoutingStrategy;
-    strategies: RoutingStrategyConfig[];
-    loadBalancing: LoadBalancingConfig;
+    strategies: RoutingStrategy[];
+    loadBalancing: {
+      enabled: boolean;
+      strategy: 'round-robin' | 'weighted' | 'least-connections';
+      weights?: Record<string, number>;
+    };
     healthCheck: HealthCheckConfig;
   };
   safety: {
@@ -901,6 +914,12 @@ export interface RoutingConfig {
   strategy: 'round_robin' | 'load_balanced' | 'capability_based' | 'cost_optimized';
   fallback: FallbackConfig;
   healthCheck: HealthCheckConfig;
+}
+
+export interface LoadBalancingConfig {
+  enabled: boolean;
+  strategy: 'round-robin' | 'weighted' | 'least-connections';
+  weights?: Record<string, number>;
 }
 
 export interface HealthCheckConfig {
@@ -992,7 +1011,7 @@ export interface SentimentPattern {
 // Additional missing types for AI system
 
 export interface Intent {
-  type: IntentType;
+  type: IntentType | 'unknown';
   confidence: number;
   parameters?: Record<string, any>;
   subIntents?: SubIntent[];
@@ -1003,7 +1022,7 @@ export interface Intent {
 }
 
 export interface Priority {
-  level: 'low' | 'medium' | 'high' | 'urgent';
+  level: 'low' | 'medium' | 'high' | 'urgent' | 'normal';
   score: number;
 }
 
@@ -1026,7 +1045,6 @@ export interface SafetyCheckResult {
   recommendations?: string[];
   isSafe?: boolean;
   issues?: SafetyIssue[];
-  recommendations?: string[];
   escalation?: EscalationInfo;
   audit?: AuditInfo;
 }
@@ -1088,7 +1106,9 @@ export interface TemporalContext {
 export interface RoutingStrategy {
   name: string;
   type: 'round_robin' | 'load_balanced' | 'capability_based' | 'cost_optimized';
-  config: any;
+  algorithm?: string;
+  weights?: Record<string, number>;
+  config?: any;
 }
 
 export interface RoutingRule {
@@ -1114,11 +1134,12 @@ export interface RoutingAction {
   parameters?: any;
 }
 
-export interface LoadBalancingConfig {
-  algorithm: 'round_robin' | 'weighted' | 'least_connections';
-  weights?: Record<string, number>;
-  healthCheck: boolean;
-  interval: number;
+export interface RoutingRule {
+  id: string;
+  condition: RoutingCondition;
+  action: RoutingAction;
+  priority: number;
+  enabled: boolean;
 }
 
 export interface PersonalizationAdjustment {
@@ -1126,6 +1147,7 @@ export interface PersonalizationAdjustment {
   original: any;
   modified: any;
   reason: string;
+  confidence?: number;
 }
 
 export interface AIRequest {
@@ -1219,6 +1241,28 @@ export interface RoutingResult {
   queuePosition?: number;
 }
 
+export interface RequestAnalysis {
+  complexity: 'low' | 'medium' | 'high';
+  priority: Priority;
+  estimatedTokens: number;
+  capabilities: string[];
+  contentType: string;
+  urgency: 'low' | 'medium' | 'high' | 'critical';
+  costSensitivity: 'low' | 'medium' | 'high';
+  latencySensitivity: 'low' | 'medium' | 'high';
+  intent?: Intent;
+  context?: ConversationContext;
+}
+
+export interface RoutingDecision {
+  provider: string;
+  model: string;
+  confidence: number;
+  reasoning: string[];
+  strategy: string;
+  estimatedCost: number;
+}
+
 export interface ProcessingContext {
   userId?: string;
   guildId?: string;
@@ -1266,28 +1310,6 @@ export interface AvailableModel {
   isDefault: boolean;
 }
 
-export interface RequestAnalysis {
-  complexity: 'low' | 'medium' | 'high';
-  priority: Priority;
-  estimatedTokens: number;
-  capabilities: string[];
-  contentType: string;
-  urgency: 'low' | 'medium' | 'high' | 'critical';
-  costSensitivity: 'low' | 'medium' | 'high';
-  latencySensitivity: 'low' | 'medium' | 'high';
-  intent?: Intent;
-  context?: ConversationContext;
-}
-
-export interface RoutingDecision {
-  provider: string;
-  model: string;
-  confidence: number;
-  reasoning: string[];
-  strategy: string;
-  estimatedCost: number;
-}
-
 export interface UserStats {
   dailyRequests: number;
   monthlyRequests: number;
@@ -1300,13 +1322,6 @@ export interface Attachment {
   url: string;
   size: number;
   name: string;
-}
-
-export interface RoutingStrategyConfig {
-  name: string;
-  algorithm: string;
-  weights: Record<string, number>;
-  conditions?: Record<string, any>;
 }
 
 // Base class for AI providers (to be used in interfaces)
