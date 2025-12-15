@@ -840,6 +840,7 @@ export interface AIConfiguration {
   routing: {
     strategy: RoutingStrategy;
     strategies: RoutingStrategy[];
+    rules: RoutingRule[];
     loadBalancing: {
       enabled: boolean;
       strategy: 'round-robin' | 'weighted' | 'least-connections';
@@ -1108,6 +1109,14 @@ export interface RoutingStrategy {
   type: 'round_robin' | 'load_balanced' | 'capability_based' | 'cost_optimized';
   algorithm?: string;
   weights?: Record<string, number>;
+  config?: any;
+}
+
+export interface RoutingStrategyConfig {
+  name: string;
+  type: 'round_robin' | 'load_balanced' | 'capability_based' | 'cost_optimized';
+  algorithm: string;
+  weights: Record<string, number>;
   config?: any;
 }
 

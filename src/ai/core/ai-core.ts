@@ -30,10 +30,10 @@ import { ContextManager } from './context-manager';
 
 export class AICore {
   private providers: Map<string, BaseAIProvider> = new Map();
-  private modelSelector: ModelSelector;
-  private requestRouter: RequestRouter;
-  private responseProcessor: ResponseProcessor;
-  private contextManager: ContextManager;
+  private modelSelector!: ModelSelector;
+  private requestRouter!: RequestRouter;
+  private responseProcessor!: ResponseProcessor;
+  private contextManager!: ContextManager;
   private config: AIConfiguration;
   private logger: Logger;
   private isInitialized = false;
@@ -49,7 +49,7 @@ export class AICore {
       averageResponseTime: 0,
       totalTokensUsed: 0,
       totalCost: 0,
-      uptime: Date.now(),
+      uptime: new Date(),
       lastReset: new Date()
     };
   }
@@ -77,7 +77,7 @@ export class AICore {
       await this.initializeContextManager();
 
       this.isInitialized = true;
-      this.metrics.uptime = Date.now();
+      this.metrics.uptime = new Date();
 
       this.logger.info('AI Core system initialized successfully', {
         providers: this.providers.size,
@@ -124,7 +124,7 @@ export class AICore {
         tokensUsed: result.response?.usage?.totalTokens
       });
 
-      return result;
+      return result as RoutingResult;
 
     } catch (error) {
       // Update metrics on failure
@@ -133,6 +133,7 @@ export class AICore {
       this.logger.error('Request processing failed', {
         requestId: request.id || 'unknown',
         error: (error as Error).message,
+        requestId: request.id || 'unknown',
         processingTime: Date.now() - startTime
       });
       
@@ -186,10 +187,16 @@ export class AICore {
     this.providers.set(providerInfo.id, provider);
     
     // Reinitialize model selector with new provider
-    await this.modelSelector.initialize([...this.providers.values()], {
-      routing: this.config.routing,
-      logger: this.logger
-    });
+    this.modelSelector = new ModelSelector(
+      Array.from(this.providers.values()),
+      {
+        routing: {
+          ...this.config.routing,
+          rules: this.config.routing.rules || []
+        },
+        logger: this.logger
+      }
+    );
 
     this.logger.info(`Provider ${providerInfo.name} added successfully`);
   }
@@ -202,10 +209,16 @@ export class AICore {
       this.providers.delete(providerId);
       
       // Reinitialize model selector
-      await this.modelSelector.initialize([...this.providers.values()], {
-        routing: this.config.routing,
+    this.modelSelector = new ModelSelector(
+      Array.from(this.providers.values()),
+      {
+        routing: {
+          ...this.config.routing,
+          rules: this.config.routing.rules || []
+        },
         logger: this.logger
-      });
+      }
+    );
 
       this.logger.info(`Provider ${providerId} removed successfully`);
     }
@@ -231,6 +244,7 @@ export class AICore {
       if (provider) {
         return {
           ...provider.getProviderInfo(),
+          capabilities: provider.getProviderInfo().capabilities.map((c: any) => c.name || ''),
           stats: this.modelSelector.getUsageStats().get(providerId) || {
             requestCount: 0,
             successCount: 0,
@@ -245,7 +259,7 @@ export class AICore {
             consecutiveFailures: 0,
             lastError: undefined
           }
-        };
+        } as ProviderInfo;
       }
     }
     
@@ -263,7 +277,7 @@ export class AICore {
       averageResponseTime: 0,
       totalTokensUsed: 0,
       totalCost: 0,
-      uptime: Date.now(),
+      uptime: new Date(),
       lastReset: new Date()
     };
     
@@ -326,9 +340,12 @@ export class AICore {
 
   private async initializeModelSelector(): Promise<void> {
     this.modelSelector = new ModelSelector(
-      [...this.providers.values()],
+      Array.from(this.providers.values()),
       {
-        routing: this.config.routing,
+        routing: {
+          ...this.config.routing,
+          rules: this.config.routing.rules || []
+        },
         logger: this.logger
       }
     );
@@ -343,7 +360,13 @@ export class AICore {
         queueSize: this.config.performance.queueSize || 1000,
         timeoutMs: this.config.performance.timeoutMs || 30000,
         retryAttempts: this.config.performance.retryAttempts || 3,
-        strategies: this.config.routing.strategies || []
+        strategies: (this.config.routing.strategies || []).map((s: any): RoutingStrategyConfig => ({
+          name: s.name || s.type || 'round_robin',
+          type: s.type || 'round_robin' as any,
+          algorithm: s.algorithm || 'round_robin',
+          weights: s.weights || {},
+          config: s.config || {}
+        }))
       }
     );
   }
@@ -400,21 +423,21 @@ export class AICore {
   private getProviderStatus(): ProviderStatus[] {
     const status: ProviderStatus[] = [];
     
-    for (const [providerId, provider] of this.providers) {
+    for (const [providerId, provider] of this.providers.entries()) {
       const health = this.modelSelector.getProviderHealth().get(providerId);
       const stats = this.modelSelector.getUsageStats().get(providerId);
       
       status.push({
         id: providerId,
         name: provider.getProviderInfo().name,
-        available: health?.isHealthy || false,
+        available: health?.isHealthy ?? false,
         requests: stats?.requestCount || 0,
-        successRate: stats?.requestCount > 0 
-          ? (stats.successCount / stats.requestCount) * 100 
+        successRate: stats?.requestCount && stats.requestCount > 0
+          ? (stats.successCount / stats.requestCount) * 100
           : 0,
-        averageResponseTime: stats?.averageResponseTime || 0,
-        lastUsed: stats?.lastUsed || new Date(),
-        errors: stats?.errorCount || 0
+        averageResponseTime: stats?.averageResponseTime ?? 0,
+        lastUsed: stats?.lastUsed ?? new Date(),
+        errors: stats?.errorCount ?? 0
       });
     }
     
