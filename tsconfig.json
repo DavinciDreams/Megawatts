@@ -35,7 +35,12 @@
   "exclude": [
     "node_modules",
     "dist",
-    "coverage"
+    "coverage",
+    "src/self-editing",
+    "src/storage",
+    "src/tools",
+    "src/utils",
+    "src/core"
   ],
   "ts-node": {
     "version": "10.0.0",

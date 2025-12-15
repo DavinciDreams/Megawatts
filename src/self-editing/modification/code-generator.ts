@@ -224,7 +224,7 @@ function ${target}() {
    */
   private async improveReadability(code: string): Promise<string> {
     // Mock readability improvement
-    return code.replace(/\/\//\s*/g, ' // Add comments for complex logic');
+    return code.replace(/\/\//g, ' // Add comments for complex logic');
   }
 
   /**

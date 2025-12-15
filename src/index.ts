@@ -1,42 +1,85 @@
-import { Client, GatewayIntent, Message } from 'discord.js';
+import { Client, GatewayIntentBits, Message } from 'discord.js';
+
+// Custom bot intents for command handling
+enum BotIntent {
+  Help = 'help',
+  Ping = 'ping',
+  Status = 'status',
+  Config = 'config',
+  SelfEdit = 'self_edit',
+  Analyze = 'analyze',
+  Optimize = 'optimize'
+}
+
+// Basic logger class
+class Logger {
+  private context: string = 'BOT';
+
+  info(message: string): void {
+    console.log(`[${this.context}] INFO: ${message}`);
+  }
+
+  error(message: string, error?: Error): void {
+    console.error(`[${this.context}] ERROR: ${message}`);
+    if (error) {
+      console.error(`[${this.context}] ERROR: ${error.message}`);
+      console.error(error.stack);
+    }
+  }
+
+  warn(message: string): void {
+    console.warn(`[${this.context}] WARN: ${message}`);
+  }
+}
+
+// Basic configuration class
+class BotConfig {
+  private settings: Map<string, any> = new Map();
+
+  constructor() {
+    // Load configuration from environment variables
+    this.settings.set('DISCORD_TOKEN', process.env.DISCORD_TOKEN || '');
+    this.settings.set('DISCORD_CLIENT_ID', process.env.DISCORD_CLIENT_ID || '');
+    this.settings.set('NODE_ENV', process.env.NODE_ENV || 'development');
+  }
+
+  get(key: string): any {
+    return this.settings.get(key);
+  }
+
+  set(key: string, value: any): void {
+    this.settings.set(key, value);
+  }
+}
 
 // Core bot class with self-editing capabilities
 class SelfEditingDiscordBot {
-  private client: Client;
-  private intents: Map<string, GatewayIntent>;
+  private client!: Client;
   private logger: Logger;
   private config: BotConfig;
   private isReady: boolean = false;
 
   constructor(
-    private clientId: string,
     private token: string,
-    private logger: Logger = new Logger(),
-    private config: BotConfig = new BotConfig()
+    logger?: Logger,
+    config?: BotConfig
   ) {
-    this.clientId = clientId;
-    this.token = token;
-    this.logger = logger;
-    this.config = config;
-    this.intents = new Map([
-      ['help', GatewayIntent.Help],
-      ['ping', GatewayIntent.Ping],
-      ['status', GatewayIntent.Status],
-      ['config', GatewayIntent.Config],
-      ['self_edit', GatewayIntent.SelfEdit],
-      ['analyze', GatewayIntent.Analyze],
-      ['optimize', GatewayIntent.Optimize]
-    ]);
+    this.logger = logger || new Logger();
+    this.config = config || new BotConfig();
   }
 
   // Initialize Discord client
   async initialize(): Promise<void> {
     try {
       this.client = new Client({
-        intents: this.intents,
+        intents: [
+          GatewayIntentBits.Guilds,
+          GatewayIntentBits.GuildMessages,
+          GatewayIntentBits.MessageContent
+        ],
         presence: {
           status: 'online',
-          activities: ['listening'],
+          activities: [{ name: 'listening', type: 2 }],
         },
       });
 
@@ -52,67 +95,72 @@ class SelfEditingDiscordBot {
       this.client.login(this.token);
       this.logger.info('Bot initialization complete');
     } catch (error) {
-      this.logger.error('Failed to initialize bot:', error);
+      this.logger.error('Failed to initialize bot:', error as Error);
       throw error;
     }
   }
 
   // Message handling with intent recognition
   private async handleMessage(message: Message): Promise<void> {
+    // Ignore bot messages
+    if (message.author.bot) return;
+    
     this.logger.info(`Received message from ${message.author.username}: ${message.content}`);
 
     // Simple intent recognition
     const content = message.content.toLowerCase().trim();
-    let intent: GatewayIntent | undefined;
+    let intent: BotIntent;
 
-    if (content.startsWith('!help') || content.startsWith('!ping')) {
-      intent = content.startsWith('!help') ? GatewayIntent.Help : GatewayIntent.Ping;
+    if (content.startsWith('!help')) {
+      intent = BotIntent.Help;
+    } else if (content.startsWith('!ping')) {
+      intent = BotIntent.Ping;
     } else if (content.startsWith('!status')) {
-      intent = GatewayIntent.Status;
+      intent = BotIntent.Status;
     } else if (content.startsWith('!config')) {
-      intent = GatewayIntent.Config;
+      intent = BotIntent.Config;
     } else if (content.startsWith('!self_edit')) {
-      intent = GatewayIntent.SelfEdit;
+      intent = BotIntent.SelfEdit;
     } else if (content.startsWith('!analyze')) {
-      intent = GatewayIntent.Analyze;
+      intent = BotIntent.Analyze;
     } else if (content.startsWith('!optimize')) {
-      intent = GatewayIntent.Optimize;
+      intent = BotIntent.Optimize;
     } else {
       // Default to conversation
-      intent = GatewayIntent.Help;
+      intent = BotIntent.Help;
     }
 
     await this.handleIntent(intent, message);
   }
 
   // Intent handlers
-  private async handleIntent(intent: GatewayIntent, message: Message): Promise<void> {
+  private async handleIntent(intent: BotIntent, message: Message): Promise<void> {
     switch (intent) {
-      case GatewayIntent.Help:
+      case BotIntent.Help:
         await this.handleHelp(message);
         break;
       
-      case GatewayIntent.Ping:
+      case BotIntent.Ping:
         await this.handlePing(message);
         break;
       
-      case GatewayIntent.Status:
+      case BotIntent.Status:
         await this.handleStatus(message);
         break;
       
-      case GatewayIntent.Config:
+      case BotIntent.Config:
         await this.handleConfig(message);
         break;
       
-      case GatewayIntent.SelfEdit:
+      case BotIntent.SelfEdit:
         await this.handleSelfEdit(message);
         break;
       
-      case GatewayIntent.Analyze:
+      case BotIntent.Analyze:
         await this.handleAnalyze(message);
         break;
       
-      case GatewayIntent.Optimize:
+      case BotIntent.Optimize:
         await this.handleOptimize(message);
         break;
       
@@ -209,46 +257,44 @@ class SelfEditingDiscordBot {
   }
 }
 
-// Basic configuration class (would be expanded significantly)
-class BotConfig {
-  private settings: Map<string, any> = new Map();
-
-  constructor() {
-    // Load configuration from environment variables
-    this.settings.set('DISCORD_TOKEN', process.env.DISCORD_TOKEN || '');
-    this.settings.set('DISCORD_CLIENT_ID', process.env.DISCORD_CLIENT_ID || '');
-    this.settings.set('NODE_ENV', process.env.NODE_ENV || 'development');
+// Bot initialization and startup
+async function main() {
+  const logger = new Logger();
+  const config = new BotConfig();
+  
+  const token = config.get('DISCORD_TOKEN');
+  if (!token) {
+    logger.error('DISCORD_TOKEN is required but not set in environment variables');
+    process.exit(1);
   }
 
-  get(key: string): any {
-    return this.settings.get(key);
-  }
-
-  set(key: string, value: any): void {
-    this.settings.set(key, value);
-  }
-}
-
-// Basic logger class (would be expanded with structured logging)
-class Logger {
-  private context: string = 'BOT';
-
-  info(message: string): void {
-    console.log(`[${this.context}] INFO: ${message}`);
-  }
-
-  error(message: string, error?: Error): void {
-    console.error(`[${this.context}] ERROR: ${message}`);
-    if (error) {
-      console.error(`[${this.context}] ERROR: ${error.message}`);
-      console.error(error.stack);
-    }
-  }
-
-  warn(message: string): void {
-    console.warn(`[${this.context}] WARN: ${message}`);
+  const bot = new SelfEditingDiscordBot(token, logger, config);
+  
+  try {
+    await bot.initialize();
+    logger.info('Bot started successfully');
+  } catch (error) {
+    logger.error('Failed to start bot:', error as Error);
+    process.exit(1);
   }
 }
 
-// Export the bot class
+// Handle graceful shutdown
+process.on('SIGINT', () => {
+  console.log('\nReceived SIGINT. Shutting down gracefully...');
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.log('\nReceived SIGTERM. Shutting down gracefully...');
+  process.exit(0);
+});
+
+// Start the bot
+main().catch(error => {
+  console.error('Unhandled error during startup:', error);
+  process.exit(1);
+});
+
+// Export bot class
 export default SelfEditingDiscordBot;

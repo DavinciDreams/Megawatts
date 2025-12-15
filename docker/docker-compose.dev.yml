@@ -53,7 +53,7 @@ services:
       - POSTGRES_USER=${DB_USER:-botuser}
       - POSTGRES_PASSWORD=${DB_PASSWORD:-botpass}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data_dev:/var/lib/postgresql/data
       - ../postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -72,7 +72,7 @@ services:
     container_name: discord-bot-redis-dev
     command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redispass}
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data_dev:/data
     networks:
@@ -90,7 +90,7 @@ services:
     image: adminer:latest
     container_name: discord-bot-adminer-dev
     ports:
-      - "8081:8080"
+      - "8083:8080"
     networks:
       - bot-network
     restart: unless-stopped
@@ -103,7 +103,7 @@ services:
     environment:
       - REDIS_HOSTS=local:redis:6379:0:${REDIS_PASSWORD:-redispass}
     ports:
-      - "8082:8081"
+      - "8084:8081"
     networks:
       - bot-network
     restart: unless-stopped
@@ -121,4 +121,4 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/16
+        - subnet: 172.25.0.0/16
