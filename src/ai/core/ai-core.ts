@@ -360,7 +360,7 @@ export class AICore {
         queueSize: this.config.performance.queueSize || 1000,
         timeoutMs: this.config.performance.timeoutMs || 30000,
         retryAttempts: this.config.performance.retryAttempts || 3,
-        strategies: (this.config.routing.strategies || []).map((s: any): RoutingStrategyConfig => ({
+        strategies: (this.config.routing.strategies || []).map((s: any): any => ({
           name: s.name || s.type || 'round_robin',
           type: s.type || 'round_robin' as any,
           algorithm: s.algorithm || 'round_robin',

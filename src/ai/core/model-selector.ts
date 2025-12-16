@@ -23,6 +23,38 @@ import { Logger } from '../../utils/logger';
 import { BaseAIProvider } from './ai-provider';
 
 // ============================================================================
+// INTERFACES
+// ============================================================================
+
+export interface ModelSelectorConfig {
+  routing: {
+    strategy: RoutingStrategy;
+    rules: RoutingRule[];
+    loadBalancing: LoadBalancingConfig;
+    healthCheck: HealthCheckConfig;
+  };
+  logger: Logger;
+}
+
+export interface ProviderHealth {
+  isHealthy: boolean;
+  lastCheck: Date;
+  responseTime: number;
+  errorRate: number;
+  consecutiveFailures: number;
+  lastError?: Error;
+}
+
+export interface UsageStats {
+  requestCount: number;
+  successCount: number;
+  errorCount: number;
+  averageResponseTime: number;
+  lastUsed: Date;
+  cost: number;
+}
+
+// ============================================================================
 // MODEL SELECTOR CLASS
 // ============================================================================
 
@@ -37,15 +69,7 @@ export class ModelSelector {
 
   constructor(
     providers: BaseAIProvider[],
-    config: {
-      routing: {
-        strategy: RoutingStrategy;
-        rules: RoutingRule[];
-        loadBalancing: LoadBalancingConfig;
-        healthCheck: HealthCheckConfig;
-      };
-      logger: Logger;
-    }
+    config: ModelSelectorConfig
   ) {
     this.logger = config.logger;
     this.loadBalancingConfig = config.routing.loadBalancing;
@@ -118,7 +142,7 @@ export class ModelSelector {
   private async getAvailableModels(): Promise<AvailableModel[]> {
     const availableModels: AvailableModel[] = [];
 
-    for (const [providerId, provider] of this.providers) {
+    for (const [providerId, provider] of Array.from(this.providers.entries())) {
       const health = this.providerHealth.get(providerId);
       if (!health || !health.isHealthy) {
         continue;
@@ -141,7 +165,7 @@ export class ModelSelector {
             costPerToken: model.costPerToken,
             maxTokens: model.maxTokens,
             contextWindow: model.contextWindow,
-            isDefault: model.isDefault
+            isDefault: model.isDefault || false
           });
         }
 
@@ -165,26 +189,29 @@ export class ModelSelector {
 
       const matches = this.evaluateRoutingCondition(rule.condition, request);
       if (matches) {
-        const provider = this.providers.get(rule.action.provider);
-        if (provider) {
-          const model = rule.action.model 
-            ? provider.getAvailableModels().find(m => m.id === rule.action.model)
-            : provider.getAvailableModels().find(m => m.isDefault);
+        const providerId = rule.action.provider;
+        if (providerId) {
+          const provider = this.providers.get(providerId);
+          if (provider) {
+            const model = rule.action.model
+              ? provider.getAvailableModels().find(m => m.id === rule.action.model)
+              : provider.getAvailableModels().find(m => m.isDefault);
 
-          if (model) {
-            return {
-              forcedSelection: {
-                modelId: model.id,
-                providerId: rule.action.provider,
-                model,
-                capabilities: model.capabilities,
-                costPerToken: model.costPerToken,
-                maxTokens: model.maxTokens,
-                contextWindow: model.contextWindow,
-                isDefault: model.isDefault
-              },
-              appliedRule: rule
-            };
+            if (model) {
+              return {
+                forcedSelection: {
+                  modelId: model.id,
+                  providerId: providerId,
+                  model,
+                  capabilities: model.capabilities,
+                  costPerToken: model.costPerToken,
+                  maxTokens: model.maxTokens,
+                  contextWindow: model.contextWindow,
+                  isDefault: model.isDefault || false
+                },
+                appliedRule: rule
+              };
+            }
           }
         }
       }
@@ -263,15 +290,13 @@ export class ModelSelector {
       throw new Error('No models available for selection');
     }
     
-    switch (this.loadBalancingConfig.algorithm) {
+    switch (this.loadBalancingConfig.strategy) {
       case 'weighted':
         return this.applyWeightedSelection(models, request);
-      case 'round_robin':
+      case 'round-robin':
         return this.applyRoundRobinSelection(models);
-      case 'least_connections':
+      case 'least-connections':
         return this.applyLeastConnectionsSelection(models);
-      case 'response_time':
-        return this.applyResponseTimeSelection(models);
       default:
         return this.applyWeightedSelection(models, request);
     }
@@ -485,6 +510,8 @@ export class ModelSelector {
     const current = this.providerHealth.get(providerId) || {
       isHealthy: true,
       lastCheck: new Date(),
+      responseTime: 0,
+      errorRate: 0,
       consecutiveFailures: 0,
       lastError: undefined
     };
@@ -498,7 +525,7 @@ export class ModelSelector {
     } else {
       current.isHealthy = false;
       current.consecutiveFailures++;
-      current.lastError = reason;
+      current.lastError = reason ? new Error(reason) : undefined;
     }
 
     this.providerHealth.set(providerId, current);
@@ -511,7 +538,7 @@ export class ModelSelector {
     if (!this.healthCheckConfig.enabled) return;
 
     setInterval(async () => {
-      for (const [providerId, provider] of this.providers) {
+      for (const [providerId, provider] of Array.from(this.providers.entries())) {
         try {
           const isHealthy = await provider.isAvailable();
           this.updateProviderHealth(providerId, isHealthy);
@@ -677,7 +704,7 @@ export interface ProviderHealth {
   isHealthy: boolean;
   lastCheck: Date;
   consecutiveFailures: number;
-  lastError?: string | undefined;
+  lastError?: Error | undefined;
 }
 
 export interface UsageStats {

@@ -105,7 +105,7 @@ export class ConnectionOrchestrator {
    * Setup Discord client event handlers
    */
   private setupClientEventHandlers(): void {
-    this.client.once('ready', this.handleClientReady.bind(this));
+    this.client.once('clientReady', this.handleClientReady.bind(this));
     this.client.on('disconnect', this.handleClientDisconnect.bind(this));
     this.client.on('reconnecting', this.handleClientReconnecting.bind(this));
     this.client.on('resume', this.handleClientResume.bind(this));
@@ -220,7 +220,7 @@ export class ConnectionOrchestrator {
    * Handle client ready event
    */
   private async handleClientReady(): Promise<void> {
-    this.logger.info('Discord client ready');
+    this.logger.info('Discord client ready and connected');
     this.setState(ConnectionState.CONNECTED);
     
     // Update health monitor with connection info
@@ -241,6 +241,12 @@ export class ConnectionOrchestrator {
         }
       }
     });
+  }
+
+  // Backward compatibility method for deprecated ready event
+  private async handleReady(): Promise<void> {
+    this.logger.warn('Using deprecated ready event. Please migrate to clientReady event.');
+    await this.handleClientReady();
   }
 
   /**

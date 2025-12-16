@@ -131,7 +131,7 @@ export class ConnectionManager {
    * Setup Discord.js client event handlers
    */
   private setupClientEventHandlers(): void {
-    this.client.once('ready', this.handleReady.bind(this));
+    this.client.once('clientReady', this.handleClientReady.bind(this));
     this.client.on('disconnect', this.handleDisconnect.bind(this));
     this.client.on('reconnecting', this.handleReconnecting.bind(this));
     this.client.on('resume', this.handleResume.bind(this));
@@ -143,12 +143,12 @@ export class ConnectionManager {
   /**
    * Handle client ready event
    */
-  private async handleReady(): Promise<void> {
+  private async handleClientReady(): Promise<void> {
     this.setState(BotState.CONNECTED);
     // Track connection via orchestrator
-    this.logger.info(`Bot connected as ${this.client.user?.tag}`);
+    this.logger.info(`Bot client ready and connected as ${this.client.user?.tag}`);
     
-    this.logger.info(`Bot connected as ${this.client.user?.tag}`);
+    this.logger.info(`Bot client ready and connected as ${this.client.user?.tag}`);
     
     // Set bot presence if configured
     if (this.config.presence) {
@@ -171,6 +171,12 @@ export class ConnectionManager {
         metadata: { userTag: this.client.user?.tag }
       }
     });
+  }
+
+  // Backward compatibility method for deprecated ready event
+  private async handleReady(): Promise<void> {
+    this.logger.warn('Using deprecated ready event. Please migrate to clientReady event.');
+    await this.handleClientReady();
   }
 
   /**

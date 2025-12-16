@@ -14,27 +14,26 @@ export class DiscordBot {
     
     this.client = new Client({
       intents: this.getIntents(),
-      partials: {
-        user: true,
-        guild: true,
-        channel: true,
-        message: true,
-        reaction: true,
-        guildMember: true,
-        guildScheduledEvent: true,
-        guildScheduledEventUser: true,
-      },
+      partials: [
+        Partials.User,
+        Partials.Guild,
+        Partials.Channel,
+        Partials.Message,
+        Partials.Reaction,
+        Partials.GuildMember,
+        Partials.GuildScheduledEvent,
+        Partials.GuildScheduledEventUser,
+      ],
     });
 
     this.setupEventHandlers();
   }
 
-  private getIntents(): GatewayIntentBits[] {
+  private getIntents(): number {
     const intentMap: Record<string, GatewayIntentBits> = {
       'Guilds': GatewayIntentBits.Guilds,
       'GuildMembers': GatewayIntentBits.GuildMembers,
       'GuildBans': GatewayIntentBits.GuildBans,
-      'GuildEmojis': GatewayIntentBits.GuildEmojis,
       'GuildIntegrations': GatewayIntentBits.GuildIntegrations,
       'GuildWebhooks': GatewayIntentBits.GuildWebhooks,
       'GuildInvites': GatewayIntentBits.GuildInvites,
@@ -51,23 +50,35 @@ export class DiscordBot {
 
     return this.config.intents
       .filter(intent => intentMap[intent])
-      .reduce((acc, intent) => acc | intent, 0 as GatewayIntentBits);
+      .reduce((acc, intent) => acc | (intentMap[intent] || 0), 0 as GatewayIntentBits);
   }
 
   private setupEventHandlers(): void {
-    this.client.once('ready', this.handleReady.bind(this));
+    this.client.once('clientReady', this.handleClientReady.bind(this));
     this.client.on('messageCreate', this.handleMessage.bind(this));
     this.client.on('error', this.handleError.bind(this));
   }
 
-  private async handleReady(): Promise<void> {
+  private async handleClientReady(): Promise<void> {
     this.isReady = true;
-    this.logger.info(`Bot logged in as ${this.client.user?.tag}`);
+    this.logger.info(`Bot client ready and logged in as ${this.client.user?.tag}`);
     
     // Set bot presence
     if (this.config.presence) {
-      await this.client.user?.setPresence(this.config.presence);
+      await this.client.user?.setPresence({
+        status: this.config.presence.status as any,
+        activities: this.config.presence.activities.map(activity => ({
+          name: activity.name,
+          type: activity.type as any,
+        })),
+      });
     }
+  }
+
+  // Backward compatibility method for deprecated ready event
+  private async handleReady(): Promise<void> {
+    this.logger.warn('Using deprecated ready event. Please migrate to clientReady event.');
+    await this.handleClientReady();
   }
 
   private async handleMessage(message: any): Promise<void> {
@@ -83,17 +94,18 @@ export class DiscordBot {
       // Handle commands and self-editing logic will be implemented in separate modules
       // This is just basic message routing
     } catch (error) {
-      this.handleError(error as BotError);
+      this.handleError(error as Error);
     }
   }
 
-  private handleError(error: Error | BotError): void {
+  private handleError(error: Error): void {
     this.logger.error('Bot error occurred:', error);
     
-    if (error instanceof BotError) {
-      this.logger.error(`Bot Error [${error.code}]: ${error.message}`, {
-        context: error.context,
-        severity: error.severity,
+    if ('code' in error) {
+      const botError = error as any;
+      this.logger.error(`Bot Error [${botError.code}]: ${botError.message}`, {
+        context: botError.context || undefined,
+        severity: botError.severity || undefined,
       });
     } else {
       this.logger.error('Unexpected error:', error);
@@ -105,7 +117,7 @@ export class DiscordBot {
       this.logger.info('Starting Discord bot...');
       await this.client.login(this.config.token);
     } catch (error) {
-      this.handleError(error as BotError);
+      this.handleError(error as Error);
       throw error;
     }
   }

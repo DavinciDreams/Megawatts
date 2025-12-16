@@ -84,27 +84,43 @@ export class OpenAIProvider extends BaseAIProvider {
     return {
       id: 'openai',
       name: 'OpenAI',
+      type: 'openai',
       models: this.getAvailableModels(),
       capabilities: [
         { type: 'text', supported: true, confidence: 0.95 },
         { type: 'function_calling', supported: true, confidence: 0.90 },
         { type: 'code_generation', supported: true, confidence: 0.85 }
       ],
-      rateLimits: {
-        requestsPerMinute: 3500,
-        tokensPerMinute: 90000,
-        requestsPerDay: 10000,
-        tokensPerDay: 1000000
-      },
-      priority: 1,
-      isAvailable: true,
       config: {
         apiKey: this.config.apiKey,
         endpoint: this.config.endpoint,
-        timeout: this.config.timeout,
-        retries: this.config.retries,
-        customHeaders: this.config.customHeaders
-      }
+        timeout: this.config.timeout || 30000,
+        retries: this.config.retries || 3,
+        customHeaders: this.config.customHeaders || {},
+        rateLimit: {
+          requestsPerMinute: 3500,
+          tokensPerMinute: 90000
+        },
+        fallback: {
+          enabled: false,
+          providers: [],
+          threshold: 0.5
+        }
+      },
+      status: 'active',
+      health: {
+        status: 'healthy',
+        lastCheck: new Date(),
+        responseTime: 0,
+        errorRate: 0,
+        uptime: 1
+      },
+      rateLimits: {
+        requestsPerMinute: 3500,
+        tokensPerMinute: 90000
+      },
+      priority: 1,
+      isAvailable: true
     };
   }
 
@@ -114,9 +130,15 @@ export class OpenAIProvider extends BaseAIProvider {
         id: 'gpt-4-turbo',
         name: 'GPT-4 Turbo',
         provider: 'openai',
+        type: 'gpt-4-turbo',
         maxTokens: 128000,
         contextWindow: 128000,
         costPerToken: 0.00003,
+        cost: {
+          input: 0.00003,
+          output: 0.00006,
+          currency: 'USD'
+        },
         capabilities: [
           { name: 'text', description: 'Advanced text generation', supported: true },
           { name: 'function_calling', description: 'Function calling capabilities', supported: true },
@@ -128,9 +150,15 @@ export class OpenAIProvider extends BaseAIProvider {
         id: 'gpt-3.5-turbo',
         name: 'GPT-3.5 Turbo',
         provider: 'openai',
+        type: 'gpt-3.5-turbo',
         maxTokens: 16384,
         contextWindow: 16384,
         costPerToken: 0.000002,
+        cost: {
+          input: 0.000002,
+          output: 0.000004,
+          currency: 'USD'
+        },
         capabilities: [
           { name: 'text', description: 'Text generation', supported: true },
           { name: 'function_calling', description: 'Basic function calling', supported: true }
@@ -292,26 +320,42 @@ export class AnthropicProvider extends BaseAIProvider {
     return {
       id: 'anthropic',
       name: 'Anthropic',
+      type: 'anthropic',
       models: this.getAvailableModels(),
       capabilities: [
         { type: 'text', supported: true, confidence: 0.95 },
         { type: 'function_calling', supported: true, confidence: 0.85 }
       ],
-      rateLimits: {
-        requestsPerMinute: 1000,
-        tokensPerMinute: 40000,
-        requestsPerDay: 5000,
-        tokensPerDay: 500000
-      },
-      priority: 2,
-      isAvailable: true,
       config: {
         apiKey: this.config.apiKey,
         endpoint: this.config.endpoint,
-        timeout: this.config.timeout,
-        retries: this.config.retries,
-        customHeaders: this.config.customHeaders
-      }
+        timeout: this.config.timeout || 30000,
+        retries: this.config.retries || 3,
+        customHeaders: this.config.customHeaders || {},
+        rateLimit: {
+          requestsPerMinute: 1000,
+          tokensPerMinute: 40000
+        },
+        fallback: {
+          enabled: false,
+          providers: [],
+          threshold: 0.5
+        }
+      },
+      status: 'active',
+      health: {
+        status: 'healthy',
+        lastCheck: new Date(),
+        responseTime: 0,
+        errorRate: 0,
+        uptime: 1
+      },
+      rateLimits: {
+        requestsPerMinute: 1000,
+        tokensPerMinute: 40000
+      },
+      priority: 2,
+      isAvailable: true
     };
   }
 
@@ -321,9 +365,15 @@ export class AnthropicProvider extends BaseAIProvider {
         id: 'claude-3-opus',
         name: 'Claude 3 Opus',
         provider: 'anthropic',
+        type: 'claude-3-opus',
         maxTokens: 200000,
         contextWindow: 200000,
         costPerToken: 0.000075,
+        cost: {
+          input: 0.000075,
+          output: 0.00015,
+          currency: 'USD'
+        },
         capabilities: [
           { name: 'text', description: 'Advanced reasoning and text generation', supported: true },
           { name: 'function_calling', description: 'Function calling capabilities', supported: true }
@@ -334,9 +384,15 @@ export class AnthropicProvider extends BaseAIProvider {
         id: 'claude-3-sonnet',
         name: 'Claude 3 Sonnet',
         provider: 'anthropic',
+        type: 'claude-3-sonnet',
         maxTokens: 200000,
         contextWindow: 200000,
         costPerToken: 0.000015,
+        cost: {
+          input: 0.000015,
+          output: 0.00003,
+          currency: 'USD'
+        },
         capabilities: [
           { name: 'text', description: 'Balanced performance and cost', supported: true },
           { name: 'function_calling', description: 'Function calling capabilities', supported: true }
@@ -523,25 +579,41 @@ export class LocalModelProvider extends BaseAIProvider {
     return {
       id: 'local',
       name: 'Local Models',
+      type: 'local',
       models: this.getAvailableModels(),
       capabilities: [
         { type: 'text', supported: true, confidence: 0.80 },
         { type: 'function_calling', supported: true, confidence: 0.70 }
       ],
-      rateLimits: {
-        requestsPerMinute: 60,
-        tokensPerMinute: 10000,
-        requestsPerDay: 1440,
-        tokensPerDay: 240000
-      },
-      priority: 3,
-      isAvailable: true,
       config: {
         endpoint: this.config.endpoint,
-        timeout: this.config.timeout,
-        retries: this.config.retries,
-        modelPath: this.config.modelPath
-      }
+        timeout: this.config.timeout || 60000,
+        retries: this.config.retries || 3,
+        modelPath: this.config.modelPath,
+        rateLimit: {
+          requestsPerMinute: 60,
+          tokensPerMinute: 10000
+        },
+        fallback: {
+          enabled: false,
+          providers: [],
+          threshold: 0.5
+        }
+      },
+      status: 'active',
+      health: {
+        status: 'healthy',
+        lastCheck: new Date(),
+        responseTime: 0,
+        errorRate: 0,
+        uptime: 1
+      },
+      rateLimits: {
+        requestsPerMinute: 60,
+        tokensPerMinute: 10000
+      },
+      priority: 3,
+      isAvailable: true
     };
   }
 
@@ -551,9 +623,15 @@ export class LocalModelProvider extends BaseAIProvider {
         id: 'llama-2-7b',
         name: 'LLaMA 2 7B',
         provider: 'local',
+        type: 'llama-2',
         maxTokens: 4096,
         contextWindow: 4096,
         costPerToken: 0, // Local models are free to run
+        cost: {
+          input: 0,
+          output: 0,
+          currency: 'USD'
+        },
         capabilities: [
           { name: 'text', description: 'Basic text generation', supported: true },
           { name: 'function_calling', description: 'Limited function calling', supported: true }

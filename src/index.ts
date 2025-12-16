@@ -189,9 +189,29 @@ class SelfEditingDiscordBot {
         },
       });
 
-      this.client.on('ready', () => {
-        this.logger.info('Bot is ready and online!');
+      this.client.on('clientReady', () => {
+        this.logger.info('Bot client is ready and online!');
         this.isReady = true;
+        // Update health manager with Discord client status
+        this.updateDiscordHealthStatus(true);
+      });
+
+      // Backward compatibility for deprecated ready event
+      this.client.on('ready', () => {
+        this.logger.warn('Using deprecated ready event. Please migrate to clientReady event.');
+        this.isReady = true;
+        this.updateDiscordHealthStatus(true);
+      });
+
+      this.client.on('disconnect', () => {
+        this.logger.warn('Discord client disconnected');
+        this.isReady = false;
+        this.updateDiscordHealthStatus(false);
+      });
+
+      this.client.on('reconnecting', () => {
+        this.logger.info('Discord client reconnecting');
+        this.updateDiscordHealthStatus(false);
       });
 
       this.client.on('messageCreate', async (message) => {
@@ -204,6 +224,32 @@ class SelfEditingDiscordBot {
       this.logger.error('Failed to initialize bot:', error as Error);
       throw error;
     }
+  }
+
+  // Update Discord health status
+  private updateDiscordHealthStatus(connected: boolean): void {
+    // Add custom Discord health check
+    this.healthManager.addHealthCheck({
+      name: 'discord_client',
+      type: 'discord_api' as any,
+      check: async () => ({
+        status: connected ? 'healthy' as any : 'unhealthy' as any,
+        checkType: 'discord_api' as any,
+        name: 'discord_client',
+        message: connected ? 'Discord client connected' : 'Discord client disconnected',
+        timestamp: new Date(),
+        details: {
+          connected,
+          ready: this.isReady,
+          guilds: this.client?.guilds?.cache?.size || 0,
+          ping: this.client?.ws?.ping || 0
+        }
+      }),
+      options: {
+        timeout: 5000,
+        critical: true
+      }
+    });
   }
 
   // Graceful shutdown
