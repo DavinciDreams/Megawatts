@@ -37,6 +37,7 @@ class BotConfig {
     console.log('[DEBUG] process.env.DISCORD_TOKEN:', process.env.DISCORD_TOKEN ? 'EXISTS' : 'MISSING');
     console.log('[DEBUG] process.env.DISCORD_CLIENT_ID:', process.env.DISCORD_CLIENT_ID ? 'EXISTS' : 'MISSING');
     console.log('[DEBUG] process.env.NODE_ENV:', process.env.NODE_ENV || 'development');
+    console.log('[DEBUG] process.env.BOT_RESPONSE_CHANNEL:', process.env.BOT_RESPONSE_CHANNEL || 'megawatts (default)');
     
     // Load configuration from environment variables
     this.settings.set('DISCORD_TOKEN', process.env.DISCORD_TOKEN || '');
@@ -44,11 +45,13 @@ class BotConfig {
     this.settings.set('NODE_ENV', process.env.NODE_ENV || 'development');
     this.settings.set('HTTP_PORT', process.env.HTTP_PORT || '8080');
     this.settings.set('HTTP_HOST', process.env.HTTP_HOST || '0.0.0.0');
+    this.settings.set('BOT_RESPONSE_CHANNEL', process.env.BOT_RESPONSE_CHANNEL || 'megawatts');
     
     // Debug: Log what was actually stored
     console.log('[DEBUG] BotConfig stored values:');
     console.log('[DEBUG] DISCORD_TOKEN length:', this.settings.get('DISCORD_TOKEN')?.length || 0);
     console.log('[DEBUG] DISCORD_CLIENT_ID:', this.settings.get('DISCORD_CLIENT_ID'));
+    console.log('[DEBUG] BOT_RESPONSE_CHANNEL:', this.settings.get('BOT_RESPONSE_CHANNEL'));
   }
 
   get(key: string): any {

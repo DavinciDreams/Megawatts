@@ -188,7 +188,7 @@ export const DEFAULT_PIPELINE_CONFIG: PipelineConfig = {
   // Channel filtering and mention detection defaults
   allowedChannels: [], // Empty by default, will be configured
   respondToMentions: true, // Enabled by default
-  allowedChannelNames: ['katbot'] // katbot channel by name as fallback
+  allowedChannelNames: [process.env.BOT_RESPONSE_CHANNEL || 'megawatts'] // Use environment variable or fallback to megawatts
 };
 
 /**

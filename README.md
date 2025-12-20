@@ -10,6 +10,7 @@ A revolutionary Discord bot with autonomous self-modification capabilities, powe
 - **🔧 Extensible Tool Framework**: Dynamic tool discovery and execution
 - **💾 Persistent Storage**: Multi-tier storage with vector search capabilities
 - **🛡️ Security & Privacy**: End-to-end encryption with comprehensive protection
+- **🔍 Smart Channel Filtering**: Selective message routing with mention detection
 
 ### 🏗️ Architecture Highlights
 - **Modular Design**: Clean separation between immutable core and modifiable components
@@ -70,6 +71,9 @@ ANTHROPIC_API_KEY=your_anthropic_key_here
 # Storage Configuration
 S3_BUCKET=your_s3_bucket_here
 S3_REGION=us-east-1
+
+# Bot Configuration
+BOT_RESPONSE_CHANNEL=megawatts
 ```
 
 ## 📚 Development Scripts
@@ -103,6 +107,8 @@ src/
 │   ├── types         # TypeScript type definitions
 │   └── tests          # Test files
 ├── docs/           # Documentation
+│   ├── CHANNEL_FILTER_GUIDE.md      # Channel filtering documentation
+│   └── CHANNEL_FILTER_QUICK_REFERENCE.md  # Quick reference guide
 ├── scripts/         # Build and deployment scripts
 ├── docker/          # Docker configurations
 └── package.json      # Project dependencies and scripts
@@ -114,6 +120,12 @@ src/
 2. **Code Review**: All changes require peer review
 3. **Testing**: Comprehensive test coverage required
 4. **Documentation**: Update docs with all changes
+
+## 📚 Documentation
+
+- **[Channel Filter Guide](docs/CHANNEL_FILTER_GUIDE.md)** - Comprehensive guide to channel filtering feature
+- **[Channel Filter Quick Reference](docs/CHANNEL_FILTER_QUICK_REFERENCE.md)** - Quick setup and configuration reference
+- **[Development Guidelines](CONTRIBUTING.md)** - Contributing guidelines and development workflow
 
 ## 📊 Contributing
 
