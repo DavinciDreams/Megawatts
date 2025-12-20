@@ -454,3 +454,9 @@ if (require.main === module) {
   runner.run().then(results => {
     process.exit(results.some(r => r.status === 'FAIL') ? 1 : 0);
   }).catch(error => {
+    console.error('Test runner error:', error);
+    process.exit(1);
+  });
+}
+
+module.exports = { runner, createMockMessage, createMockContext, createMockIntent, createMockSafety };
