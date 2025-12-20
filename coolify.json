@@ -1,0 +1,464 @@
+{
+  "name": "Discord Bot",
+  "description": "Sophisticated self-editing Discord bot with AI capabilities",
+  "version": "1.0.0",
+  "environments": {
+    "production": {
+      "name": "Production",
+      "description": "Production environment with full monitoring and scaling",
+      "default": false
+    },
+    "staging": {
+      "name": "Staging",
+      "description": "Staging environment for testing and validation",
+      "default": true
+    }
+  },
+  "applications": {
+    "discord-bot": {
+      "name": "Discord Bot Application",
+      "description": "Main Discord bot application with self-editing capabilities",
+      "build": {
+        "context": ".",
+        "dockerfile": "Dockerfile.prod"
+      },
+      "environments": {
+        "production": {
+          "replicas": 3,
+          "resource_limits": {
+            "cpu": "1000m",
+            "memory": "512Mi"
+          },
+          "deployment_strategy": {
+            "type": "rolling",
+            "max_unavailable": "25%",
+            "max_surge": "25%",
+            "progress_deadline_seconds": 600
+          },
+          "health_check": {
+            "path": "/health",
+            "port": 8080,
+            "interval_seconds": 30,
+            "timeout_seconds": 10,
+            "failure_threshold": 3,
+            "success_threshold": 1
+          },
+          "environment_variables": {
+            "NODE_ENV": "production",
+            "LOG_LEVEL": "info"
+          },
+          "secrets": [
+            "DISCORD_TOKEN",
+            "DB_USER",
+            "DB_PASSWORD",
+            "DB_NAME",
+            "REDIS_PASSWORD",
+            "REDIS_DB",
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "S3_BUCKET",
+            "S3_REGION",
+            "S3_ACCESS_KEY_ID",
+            "S3_SECRET_ACCESS_KEY"
+          ]
+        },
+        "staging": {
+          "replicas": 2,
+          "resource_limits": {
+            "cpu": "750m",
+            "memory": "384Mi"
+          },
+          "deployment_strategy": {
+            "type": "rolling",
+            "max_unavailable": "50%",
+            "max_surge": "50%",
+            "progress_deadline_seconds": 300
+          },
+          "health_check": {
+            "path": "/health",
+            "port": 8080,
+            "interval_seconds": 30,
+            "timeout_seconds": 10,
+            "failure_threshold": 3,
+            "success_threshold": 1
+          },
+          "environment_variables": {
+            "NODE_ENV": "staging",
+            "LOG_LEVEL": "debug"
+          },
+          "secrets": [
+            "DISCORD_TOKEN_STAGING",
+            "DB_USER_STAGING",
+            "DB_PASSWORD_STAGING",
+            "DB_NAME_STAGING",
+            "REDIS_PASSWORD_STAGING",
+            "REDIS_DB",
+            "OPENAI_API_KEY_STAGING",
+            "ANTHROPIC_API_KEY_STAGING",
+            "S3_BUCKET_STAGING",
+            "S3_REGION",
+            "S3_ACCESS_KEY_ID_STAGING",
+            "S3_SECRET_ACCESS_KEY_STAGING"
+          ]
+        }
+      },
+      "dependencies": [
+        "postgres",
+        "redis"
+      ]
+    }
+  },
+  "services": {
+    "postgres": {
+      "name": "PostgreSQL Database",
+      "description": "PostgreSQL 15 database for persistent data storage",
+      "image": "postgres:15-alpine",
+      "environments": {
+        "production": {
+          "replicas": 2,
+          "resource_limits": {
+            "cpu": "500m",
+            "memory": "256Mi"
+          },
+          "persistent_volumes": [
+            {
+              "name": "postgres-data-prod",
+              "path": "/var/lib/postgresql/data",
+              "size": "10Gi"
+            }
+          ],
+          "environment_variables": {
+            "POSTGRES_INITDB_ARGS": "--encoding=UTF8 --data-checksum"
+          },
+          "secrets": [
+            "DB_USER",
+            "DB_PASSWORD",
+            "DB_NAME"
+          ],
+          "health_check": {
+            "command": "pg_isready -U ${DB_USER} -d ${DB_NAME}",
+            "interval_seconds": 30,
+            "timeout_seconds": 10,
+            "failure_threshold": 3,
+            "success_threshold": 1
+          }
+        },
+        "staging": {
+          "replicas": 1,
+          "resource_limits": {
+            "cpu": "500m",
+            "memory": "256Mi"
+          },
+          "persistent_volumes": [
+            {
+              "name": "postgres-data-staging",
+              "path": "/var/lib/postgresql/data",
+              "size": "5Gi"
+            }
+          ],
+          "environment_variables": {
+            "POSTGRES_INITDB_ARGS": "--encoding=UTF8 --data-checksum"
+          },
+          "secrets": [
+            "DB_USER_STAGING",
+            "DB_PASSWORD_STAGING",
+            "DB_NAME_STAGING"
+          ],
+          "health_check": {
+            "command": "pg_isready -U ${DB_USER_STAGING} -d ${DB_NAME_STAGING:-discord_bot_staging}",
+            "interval_seconds": 30,
+            "timeout_seconds": 10,
+            "failure_threshold": 3,
+            "success_threshold": 1
+          }
+        }
+      }
+    },
+    "redis": {
+      "name": "Redis Cache",
+      "description": "Redis 7 for caching and session management",
+      "image": "redis:7-alpine",
+      "environments": {
+        "production": {
+          "resource_limits": {
+            "cpu": "250m",
+            "memory": "128Mi"
+          },
+          "persistent_volumes": [
+            {
+              "name": "redis-data-prod",
+              "path": "/data",
+              "size": "2Gi"
+            }
+          ],
+          "command": "redis-server /usr/local/etc/redis/redis.conf --appendonly yes --requirepass ${REDIS_PASSWORD}",
+          "secrets": [
+            "REDIS_PASSWORD"
+          ],
+          "health_check": {
+            "command": "redis-cli --raw incr ping",
+            "interval_seconds": 30,
+            "timeout_seconds": 10,
+            "failure_threshold": 3,
+            "success_threshold": 1
+          }
+        },
+        "staging": {
+          "resource_limits": {
+            "cpu": "250m",
+            "memory": "128Mi"
+          },
+          "persistent_volumes": [
+            {
+              "name": "redis-data-staging",
+              "path": "/data",
+              "size": "1Gi"
+            }
+          ],
+          "command": "redis-server /usr/local/etc/redis/redis.conf --appendonly yes --requirepass ${REDIS_PASSWORD_STAGING}",
+          "secrets": [
+            "REDIS_PASSWORD_STAGING"
+          ],
+          "health_check": {
+            "command": "redis-cli --raw incr ping",
+            "interval_seconds": 30,
+            "timeout_seconds": 10,
+            "failure_threshold": 3,
+            "success_threshold": 1
+          }
+        }
+      }
+    },
+    "prometheus": {
+      "name": "Prometheus Monitoring",
+      "description": "Prometheus for metrics collection and monitoring",
+      "image": "prom/prometheus:latest",
+      "environments": {
+        "production": {
+          "resource_limits": {
+            "cpu": "500m",
+            "memory": "512Mi"
+          },
+          "persistent_volumes": [
+            {
+              "name": "prometheus-data-prod",
+              "path": "/prometheus",
+              "size": "20Gi"
+            }
+          ],
+          "command": [
+            "--config.file=/etc/prometheus/prometheus.yml",
+            "--storage.tsdb.path=/prometheus",
+            "--web.console.libraries=/etc/prometheus/console_libraries",
+            "--web.console.templates=/etc/prometheus/consoles",
+            "--storage.tsdb.retention.time=200h",
+            "--web.enable-lifecycle"
+          ]
+        },
+        "staging": {
+          "resource_limits": {
+            "cpu": "250m",
+            "memory": "256Mi"
+          },
+          "persistent_volumes": [
+            {
+              "name": "prometheus-data-staging",
+              "path": "/prometheus",
+              "size": "5Gi"
+            }
+          ],
+          "command": [
+            "--config.file=/etc/prometheus/prometheus.yml",
+            "--storage.tsdb.path=/prometheus",
+            "--web.console.libraries=/etc/prometheus/console_libraries",
+            "--web.console.templates=/etc/prometheus/consoles",
+            "--storage.tsdb.retention.time=72h",
+            "--web.enable-lifecycle"
+          ]
+        }
+      }
+    },
+    "grafana": {
+      "name": "Grafana Dashboard",
+      "description": "Grafana for visualization and monitoring dashboards",
+      "image": "grafana/grafana:latest",
+      "environments": {
+        "production": {
+          "resource_limits": {
+            "cpu": "250m",
+            "memory": "256Mi"
+          },
+          "persistent_volumes": [
+            {
+              "name": "grafana-data-prod",
+              "path": "/var/lib/grafana",
+              "size": "5Gi"
+            }
+          ],
+          "environment_variables": {
+            "GF_USERS_ALLOW_SIGN_UP": "false"
+          },
+          "secrets": [
+            "GRAFANA_PASSWORD"
+          ],
+          "dependencies": [
+            "prometheus"
+          ]
+        },
+        "staging": {
+          "resource_limits": {
+            "cpu": "250m",
+            "memory": "256Mi"
+          },
+          "persistent_volumes": [
+            {
+              "name": "grafana-data-staging",
+              "path": "/var/lib/grafana",
+              "size": "2Gi"
+            }
+          ],
+          "environment_variables": {
+            "GF_USERS_ALLOW_SIGN_UP": "false",
+            "GF_SERVER_DOMAIN": "staging.example.com"
+          },
+          "secrets": [
+            "GRAFANA_PASSWORD_STAGING"
+          ],
+          "dependencies": [
+            "prometheus"
+          ]
+        }
+      }
+    },
+    "nginx": {
+      "name": "Nginx Reverse Proxy",
+      "description": "Nginx reverse proxy with SSL termination",
+      "image": "nginx:alpine",
+      "environments": {
+        "production": {
+          "resource_limits": {
+            "cpu": "250m",
+            "memory": "128Mi"
+          },
+          "health_check": {
+            "command": "curl -f http://localhost/health",
+            "interval_seconds": 30,
+            "timeout_seconds": 10,
+            "failure_threshold": 3,
+            "success_threshold": 1
+          },
+          "dependencies": [
+            "discord-bot"
+          ]
+        },
+        "staging": {
+          "resource_limits": {
+            "cpu": "250m",
+            "memory": "128Mi"
+          },
+          "health_check": {
+            "command": "curl -f http://localhost/health",
+            "interval_seconds": 30,
+            "timeout_seconds": 10,
+            "failure_threshold": 3,
+            "success_threshold": 1
+          },
+          "dependencies": [
+            "discord-bot"
+          ]
+        }
+      }
+    }
+  },
+  "networking": {
+    "production": {
+      "network_name": "bot-network-prod",
+      "subnet": "172.21.0.0/16"
+    },
+    "staging": {
+      "network_name": "bot-network-staging",
+      "subnet": "172.22.0.0/16"
+    }
+  },
+  "ports": {
+    "production": {
+      "discord-bot": {
+        "internal": 8080,
+        "external": 8080
+      },
+      "postgres": {
+        "internal": 5432,
+        "external": 5432
+      },
+      "redis": {
+        "internal": 6379,
+        "external": 6379
+      },
+      "prometheus": {
+        "internal": 9090,
+        "external": 9090
+      },
+      "grafana": {
+        "internal": 3000,
+        "external": 3000
+      },
+      "nginx": {
+        "internal": 80,
+        "external": 80
+      },
+      "nginx-ssl": {
+        "internal": 443,
+        "external": 443
+      }
+    },
+    "staging": {
+      "discord-bot": {
+        "internal": 8080,
+        "external": 8080
+      },
+      "postgres": {
+        "internal": 5432,
+        "external": 5433
+      },
+      "redis": {
+        "internal": 6379,
+        "external": 6380
+      },
+      "prometheus": {
+        "internal": 9090,
+        "external": 9091
+      },
+      "grafana": {
+        "internal": 3000,
+        "external": 3001
+      }
+    }
+  },
+  "volumes": {
+    "production": [
+      "postgres-data-prod",
+      "redis-data-prod",
+      "prometheus-data-prod",
+      "grafana-data-prod"
+    ],
+    "staging": [
+      "postgres-data-staging",
+      "redis-data-staging",
+      "prometheus-data-staging",
+      "grafana-data-staging"
+    ]
+  },
+  "restart_policy": {
+    "condition": "unless-stopped",
+    "delay": "5s",
+    "max_attempts": 3,
+    "window": "120s"
+  },
+  "logging": {
+    "driver": "json-file",
+    "options": {
+      "max-size": "10m",
+      "max-file": "3"
+    }
+  }
+}

@@ -1,0 +1,529 @@
+# =============================================================================
+# Coolify Docker Compose Override Configuration
+# =============================================================================
+# This file provides Coolify-specific overrides and configurations for the Discord bot deployment
+# =============================================================================
+
+version: '3.8'
+
+# =============================================================================
+# Coolify-specific Service Overrides
+# =============================================================================
+services:
+  # Discord Bot Application - Coolify Optimized
+  app:
+    build:
+      context: ..
+      dockerfile: docker/coolify.Dockerfile
+      target: production
+      args:
+        - BUILDKIT_INLINE_CACHE=1
+        - BUILDKIT_MULTI_PLATFORM=1
+    image: ${REGISTRY_URL:-ghcr.io/your-org}/discord-bot:${COOLIFY_COMMIT_SHA:-latest}
+    container_name: ${COOLIFY_SERVICE_NAME:-discord-bot}-${COOLIFY_ENVIRONMENT:-staging}
+    hostname: ${COOLIFY_SERVICE_NAME:-discord-bot}
+    
+    # Coolify-specific environment variables
+    environment:
+      # Coolify environment detection
+      - COOLIFY_DEPLOYMENT=true
+      - COOLIFY_ENVIRONMENT=${COOLIFY_ENVIRONMENT:-staging}
+      - COOLIFY_SERVICE_ID=${COOLIFY_SERVICE_ID:-discord-bot}
+      - COOLIFY_DEPLOYMENT_ID=${COOLIFY_DEPLOYMENT_ID}
+      
+      # Application configuration
+      - NODE_ENV=${NODE_ENV:-staging}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_FORMAT=json
+      
+      # Coolify-specific service discovery
+      - SERVICE_NAME=${COOLIFY_SERVICE_NAME:-discord-bot}
+      - SERVICE_NAMESPACE=${COOLIFY_NAMESPACE:-default}
+      - SERVICE_PORT=8080
+      
+      # Coolify storage paths
+      - COOLIFY_STORAGE_PATH=${COOLIFY_STORAGE_PATH:-/var/lib/coolify}
+      - COOLIFY_LOGS_PATH=${COOLIFY_LOGS_PATH:-/var/log/coolify}
+      
+      # Coolify health check configuration
+      - HEALTH_CHECK_INTERVAL=${HEALTH_CHECK_INTERVAL:-30}
+      - HEALTH_CHECK_TIMEOUT=${HEALTH_CHECK_TIMEOUT:-10}
+      - HEALTH_CHECK_RETRIES=${HEALTH_CHECK_RETRIES:-3}
+      
+      # Coolify metrics and monitoring
+      - METRICS_ENABLED=${METRICS_ENABLED:-true}
+      - METRICS_PORT=${METRICS_PORT:-9090}
+      - METRICS_PATH=${METRICS_PATH:-/metrics}
+      
+      # Coolify security settings
+      - SECURITY_HEADERS_ENABLED=${SECURITY_HEADERS_ENABLED:-true}
+      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}
+      - RATE_LIMIT_MAX=${RATE_LIMIT_MAX:-100}
+      - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-900000}
+      
+      # Coolify performance optimization
+      - CLUSTER_MODE=${CLUSTER_MODE:-false}
+      - CLUSTER_WORKERS=${CLUSTER_WORKERS:-0}
+      - MAX_MEMORY=${MAX_MEMORY:-512}
+      
+      # Coolify backup configuration
+      - BACKUP_ENABLED=${BACKUP_ENABLED:-true}
+      - BACKUP_SCHEDULE=${BACKUP_SCHEDULE:-0 2 * * *}
+      - BACKUP_RETENTION=${BACKUP_RETENTION:-7}
+      
+      # Coolify update configuration
+      - AUTO_UPDATE_ENABLED=${AUTO_UPDATE_ENABLED:-false}
+      - UPDATE_STRATEGY=${UPDATE_STRATEGY:-rolling}
+      - UPDATE_TIMEOUT=${UPDATE_TIMEOUT:-600}
+      
+      # Coolify debug configuration
+      - DEBUG_MODE=${DEBUG_MODE:-false}
+      - VERBOSE_LOGGING=${VERBOSE_LOGGING:-false}
+      - PROFILING_ENABLED=${PROFILING_ENABLED:-false}
+    
+    # Coolify-specific volume configurations
+    volumes:
+      # Coolify persistent storage
+      - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/data:/app/data
+      - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/logs:/app/logs
+      - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/config:/app/config
+      - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/cache:/app/cache
+      - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/temp:/app/temp
+      
+      # Coolify shared volumes
+      - ${COOLIFY_SHARED_PATH:-/var/lib/coolify}/shared:/shared:ro
+      - ${COOLIFY_CERTS_PATH:-/var/lib/coolify}/certs:/certs:ro
+      
+      # Coolify runtime volumes
+      - ${COOLIFY_RUNTIME_PATH:-/var/lib/coolify}/runtime/${COOLIFY_SERVICE_NAME:-discord-bot}:/runtime
+    
+    # Coolify-specific network configurations
+    networks:
+      - ${COOLIFY_NETWORK:-coolify-network}
+      - ${COOLIFY_SERVICE_NETWORK:-discord-bot-network}
+    
+    # Coolify-specific logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "${COOLIFY_LOG_MAX_SIZE:-10m}"
+        max-file: "${COOLIFY_LOG_MAX_FILES:-3}"
+        labels: "service=${COOLIFY_SERVICE_NAME:-discord-bot},environment=${COOLIFY_ENVIRONMENT:-staging}"
+        tag: "${COOLIFY_SERVICE_NAME:-discord-bot}.${COOLIFY_ENVIRONMENT:-staging}.{{.ID}}"
+    
+    # Coolify-specific labels for service discovery
+    labels:
+      # Coolify service labels
+      - "coolify.service.name=${COOLIFY_SERVICE_NAME:-discord-bot}"
+      - "coolify.service.type=application"
+      - "coolify.service.version=${COOLIFY_APP_VERSION:-1.0.0}"
+      - "coolify.service.environment=${COOLIFY_ENVIRONMENT:-staging}"
+      - "coolify.service.deployment=${COOLIFY_DEPLOYMENT_ID}"
+      
+      # Coolify routing labels
+      - "coolify.routing.host=${COOLIFY_ROUTING_HOST:-discord-bot.${COOLIFY_DOMAIN:-localhost}}"
+      - "coolify.routing.port=8080"
+      - "coolify.routing.protocol=http"
+      - "coolify.routing.path=${COOLIFY_ROUTING_PATH:-/}"
+      
+      # Coolify monitoring labels
+      - "coolify.monitoring.enabled=${METRICS_ENABLED:-true}"
+      - "coolify.monitoring.port=${METRICS_PORT:-9090}"
+      - "coolify.monitoring.path=${METRICS_PATH:-/metrics}"
+      
+      # Coolify health check labels
+      - "coolify.healthcheck.enabled=true"
+      - "coolify.healthcheck.path=/health"
+      - "coolify.healthcheck.port=8080"
+      - "coolify.healthcheck.interval=${HEALTH_CHECK_INTERVAL:-30}"
+      - "coolify.healthcheck.timeout=${HEALTH_CHECK_TIMEOUT:-10}"
+      - "coolify.healthcheck.retries=${HEALTH_CHECK_RETRIES:-3}"
+      
+      # Coolify security labels
+      - "coolify.security.tls=${COOLIFY_TLS_ENABLED:-false}"
+      - "coolify.security.auth=${COOLIFY_AUTH_ENABLED:-false}"
+      - "coolify.security.rateLimit=${RATE_LIMIT_ENABLED:-true}"
+      
+      # Coolify backup labels
+      - "coolify.backup.enabled=${BACKUP_ENABLED:-true}"
+      - "coolify.backup.schedule=${BACKUP_SCHEDULE:-0 2 * * *}"
+      - "coolify.backup.retention=${BACKUP_RETENTION:-7}"
+      
+      # Coolify scaling labels
+      - "coolify.scaling.min=${COOLIFY_MIN_REPLICAS:-1}"
+      - "coolify.scaling.max=${COOLIFY_MAX_REPLICAS:-5}"
+      - "coolify.scaling.target=${COOLIFY_TARGET_CPU:-70}"
+      - "coolify.scaling.enabled=${COOLIFY_AUTO_SCALING:-false}"
+    
+    # Coolify-specific deployment configuration
+    deploy:
+      replicas: ${COOLIFY_REPLICAS:-2}
+      update_config:
+        parallelism: ${COOLIFY_UPDATE_PARALLELISM:-1}
+        failure_action: rollback
+        order: start-first
+        delay: ${COOLIFY_UPDATE_DELAY:-10s}
+        monitor: ${COOLIFY_UPDATE_MONITOR:-30s}
+        max_failure_ratio: ${COOLIFY_MAX_FAILURE_RATIO:-0.1}
+      restart_policy:
+        condition: ${COOLIFY_RESTART_CONDITION:-on-failure}
+        delay: ${COOLIFY_RESTART_DELAY:-5s}
+        max_attempts: ${COOLIFY_RESTART_MAX_ATTEMPTS:-3}
+        window: ${COOLIFY_RESTART_WINDOW:-120s}
+      resources:
+        limits:
+          cpus: '${COOLIFY_CPU_LIMIT:-0.75}'
+          memory: ${COOLIFY_MEMORY_LIMIT:-384M}
+        reservations:
+          cpus: '${COOLIFY_CPU_RESERVATION:-0.25}'
+          memory: ${COOLIFY_MEMORY_RESERVATION:-128M}
+      placement:
+        constraints:
+          - "node.labels.${COOLIFY_SERVICE_NAME:-discord-bot}.enabled==true"
+        preferences:
+          - spread: "node.labels.${COOLIFY_SERVICE_NAME:-discord-bot}.zone"
+    
+    # Coolify-specific health check
+    healthcheck:
+      test: ["CMD", "/app/health-check.sh"]
+      interval: ${HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${HEALTH_CHECK_RETRIES:-3}
+      start_period: ${HEALTH_CHECK_START_PERIOD:-40s}
+    
+    # Coolify-specific security options
+    security_opt:
+      - no-new-privileges:true
+      - apparmor:docker-default
+      - seccomp:default
+    
+    # Coolify-specific resource limits
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+      nproc:
+        soft: 32768
+        hard: 32768
+    
+    # Coolify-specific runtime options
+    runtime: ${COOLIFY_RUNTIME:-runc}
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: ${COOLIFY_STOP_GRACE_PERIOD:-30s}
+    
+    # Coolify-specific dependency management
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
+      redis:
+        condition: service_healthy
+        restart: true
+
+  # PostgreSQL Database - Coolify Optimized
+  postgres:
+    image: postgres:15-alpine
+    container_name: ${COOLIFY_SERVICE_NAME:-discord-bot}-postgres-${COOLIFY_ENVIRONMENT:-staging}
+    hostname: ${COOLIFY_SERVICE_NAME:-discord-bot}-postgres
+    
+    # Coolify-specific environment variables
+    environment:
+      - COOLIFY_SERVICE_NAME=${COOLIFY_SERVICE_NAME:-discord-bot}-postgres
+      - COOLIFY_ENVIRONMENT=${COOLIFY_ENVIRONMENT:-staging}
+      - POSTGRES_DB=${DB_NAME:-discord_bot_${COOLIFY_ENVIRONMENT:-staging}}
+      - POSTGRES_USER=${DB_USER:-discord_bot}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_INITDB_ARGS="--encoding=UTF8 --data-checksum --wal-level=replica"
+      - POSTGRES_SHARED_PRELOAD_LIBRARIES="pg_stat_statements,auto_explain"
+      - POSTGRES_LOG_STATEMENT=all
+      - POSTGRES_LOG_MIN_DURATION_STATEMENT=1000
+      - POSTGRES_LOG_CHECKPOINTS=true
+      - POSTGRES_LOG_CONNECTIONS=true
+      - POSTGRES_LOG_DISCONNECTIONS=true
+      - POSTGRES_LOG_LOCK_WAITS=true
+    
+    # Coolify-specific volume configurations
+    volumes:
+      - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/postgres/data:/var/lib/postgresql/data
+      - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/postgres/logs:/var/log/postgresql
+      - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/postgres/backups:/var/backups/postgresql
+      - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/shared/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/shared/postgres/postgresql-${COOLIFY_ENVIRONMENT:-staging}.conf:/etc/postgresql/postgresql.conf:ro
+    
+    # Coolify-specific network configurations
+    networks:
+      - ${COOLIFY_NETWORK:-coolify-network}
+      - ${COOLIFY_SERVICE_NETWORK:-discord-bot-network}
+    
+    # Coolify-specific logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "${COOLIFY_LOG_MAX_SIZE:-10m}"
+        max-file: "${COOLIFY_LOG_MAX_FILES:-3}"
+        labels: "service=${COOLIFY_SERVICE_NAME:-discord-bot}-postgres,environment=${COOLIFY_ENVIRONMENT:-staging}"
+        tag: "${COOLIFY_SERVICE_NAME:-discord-bot}-postgres.${COOLIFY_ENVIRONMENT:-staging}.{{.ID}}"
+    
+    # Coolify-specific labels
+    labels:
+      - "coolify.service.name=${COOLIFY_SERVICE_NAME:-discord-bot}-postgres"
+      - "coolify.service.type=database"
+      - "coolify.service.environment=${COOLIFY_ENVIRONMENT:-staging}"
+      - "coolify.backup.enabled=true"
+      - "coolify.backup.schedule=${POSTGRES_BACKUP_SCHEDULE:-0 3 * * *}"
+      - "coolify.backup.retention=${POSTGRES_BACKUP_RETENTION:-14}"
+    
+    # Coolify-specific deployment configuration
+    deploy:
+      replicas: ${POSTGRES_REPLICAS:-1}
+      restart_policy:
+        condition: ${COOLIFY_RESTART_CONDITION:-on-failure}
+        delay: ${COOLIFY_RESTART_DELAY:-5s}
+        max_attempts: ${COOLIFY_RESTART_MAX_ATTEMPTS:-3}
+        window: ${COOLIFY_RESTART_WINDOW:-120s}
+      resources:
+        limits:
+          cpus: '${POSTGRES_CPU_LIMIT:-0.5}'
+          memory: ${POSTGRES_MEMORY_LIMIT:-256M}
+        reservations:
+          cpus: '${POSTGRES_CPU_RESERVATION:-0.25}'
+          memory: ${POSTGRES_MEMORY_RESERVATION:-128M}
+      placement:
+        constraints:
+          - "node.labels.database.enabled==true"
+    
+    # Coolify-specific health check
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-discord_bot} -d ${DB_NAME:-discord_bot_${COOLIFY_ENVIRONMENT:-staging}}"]
+      interval: ${POSTGRES_HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${POSTGRES_HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${POSTGRES_HEALTH_CHECK_RETRIES:-3}
+      start_period: ${POSTGRES_HEALTH_CHECK_START_PERIOD:-30s}
+    
+    # Coolify-specific security options
+    security_opt:
+      - no-new-privileges:true
+      - apparmor:docker-default
+      - seccomp:default
+    
+    # Coolify-specific resource limits
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+      nproc:
+        soft: 32768
+        hard: 32768
+
+  # Redis Cache - Coolify Optimized
+  redis:
+    image: redis:7-alpine
+    container_name: ${COOLIFY_SERVICE_NAME:-discord-bot}-redis-${COOLIFY_ENVIRONMENT:-staging}
+    hostname: ${COOLIFY_SERVICE_NAME:-discord-bot}-redis
+    command: >
+      redis-server /usr/local/etc/redis/redis.conf
+      --appendonly yes
+      --appendfsync everysec
+      --save 900 1 300 10 60 10000
+      --maxmemory ${REDIS_MAX_MEMORY:-128mb}
+      --maxmemory-policy allkeys-lru
+      --timeout 300
+      --tcp-keepalive 60
+      --requirepass ${REDIS_PASSWORD}
+    
+    # Coolify-specific environment variables
+    environment:
+      - COOLIFY_SERVICE_NAME=${COOLIFY_SERVICE_NAME:-discord-bot}-redis
+      - COOLIFY_ENVIRONMENT=${COOLIFY_ENVIRONMENT:-staging}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_MAX_MEMORY=${REDIS_MAX_MEMORY:-128mb}
+      - REDIS_MAX_MEMORY_POLICY=${REDIS_MAX_MEMORY_POLICY:-allkeys-lru}
+    
+    # Coolify-specific volume configurations
+    volumes:
+      - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/redis/data:/data
+      - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/redis/logs:/var/log/redis
+      - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/shared/redis/redis-${COOLIFY_ENVIRONMENT:-staging}.conf:/usr/local/etc/redis/redis.conf:ro
+    
+    # Coolify-specific network configurations
+    networks:
+      - ${COOLIFY_NETWORK:-coolify-network}
+      - ${COOLIFY_SERVICE_NETWORK:-discord-bot-network}
+    
+    # Coolify-specific logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "${COOLIFY_LOG_MAX_SIZE:-10m}"
+        max-file: "${COOLIFY_LOG_MAX_FILES:-3}"
+        labels: "service=${COOLIFY_SERVICE_NAME:-discord-bot}-redis,environment=${COOLIFY_ENVIRONMENT:-staging}"
+        tag: "${COOLIFY_SERVICE_NAME:-discord-bot}-redis.${COOLIFY_ENVIRONMENT:-staging}.{{.ID}}"
+    
+    # Coolify-specific labels
+    labels:
+      - "coolify.service.name=${COOLIFY_SERVICE_NAME:-discord-bot}-redis"
+      - "coolify.service.type=cache"
+      - "coolify.service.environment=${COOLIFY_ENVIRONMENT:-staging}"
+      - "coolify.backup.enabled=true"
+      - "coolify.backup.schedule=${REDIS_BACKUP_SCHEDULE:-0 4 * * *}"
+      - "coolify.backup.retention=${REDIS_BACKUP_RETENTION:-7}"
+    
+    # Coolify-specific deployment configuration
+    deploy:
+      resources:
+        limits:
+          cpus: '${REDIS_CPU_LIMIT:-0.25}'
+          memory: ${REDIS_MEMORY_LIMIT:-128M}
+        reservations:
+          cpus: '${REDIS_CPU_RESERVATION:-0.1}'
+          memory: ${REDIS_MEMORY_RESERVATION:-64M}
+      placement:
+        constraints:
+          - "node.labels.cache.enabled==true"
+    
+    # Coolify-specific health check
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: ${REDIS_HEALTH_CHECK_INTERVAL:-30s}
+      timeout: ${REDIS_HEALTH_CHECK_TIMEOUT:-10s}
+      retries: ${REDIS_HEALTH_CHECK_RETRIES:-3}
+      start_period: ${REDIS_HEALTH_CHECK_START_PERIOD:-30s}
+    
+    # Coolify-specific security options
+    security_opt:
+      - no-new-privileges:true
+      - apparmor:docker-default
+      - seccomp:default
+    
+    # Coolify-specific resource limits
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+      nproc:
+        soft: 32768
+        hard: 32768
+
+# =============================================================================
+# Coolify-specific Network Configuration
+# =============================================================================
+networks:
+  # Main Coolify network
+  ${COOLIFY_NETWORK:-coolify-network}:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: ${COOLIFY_NETWORK_BRIDGE:-coolify-br0}
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+      com.docker.network.driver.mtu: "1500"
+    ipam:
+      driver: default
+      config:
+        - subnet: ${COOLIFY_NETWORK_SUBNET:-172.22.0.0/16}
+          gateway: ${COOLIFY_NETWORK_GATEWAY:-172.22.0.1}
+    labels:
+      - "coolify.network.name=${COOLIFY_NETWORK:-coolify-network}"
+      - "coolify.network.type=internal"
+      - "coolify.network.environment=${COOLIFY_ENVIRONMENT:-staging}"
+  
+  # Service-specific network
+  ${COOLIFY_SERVICE_NETWORK:-discord-bot-network}:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: ${COOLIFY_SERVICE_NETWORK_BRIDGE:-discord-bot-br0}
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+      com.docker.network.driver.mtu: "1500"
+    ipam:
+      driver: default
+      config:
+        - subnet: ${COOLIFY_SERVICE_NETWORK_SUBNET:-172.23.0.0/16}
+          gateway: ${COOLIFY_SERVICE_NETWORK_GATEWAY:-172.23.0.1}
+    labels:
+      - "coolify.network.name=${COOLIFY_SERVICE_NETWORK:-discord-bot-network}"
+      - "coolify.network.type=service"
+      - "coolify.network.service=${COOLIFY_SERVICE_NAME:-discord-bot}"
+      - "coolify.network.environment=${COOLIFY_ENVIRONMENT:-staging}"
+
+# =============================================================================
+# Coolify-specific Volume Configuration
+# =============================================================================
+volumes:
+  # Application data volume
+  ${COOLIFY_SERVICE_NAME:-discord-bot}_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/data
+    labels:
+      - "coolify.volume.name=${COOLIFY_SERVICE_NAME:-discord-bot}_data"
+      - "coolify.volume.type=data"
+      - "coolify.volume.service=${COOLIFY_SERVICE_NAME:-discord-bot}"
+      - "coolify.volume.environment=${COOLIFY_ENVIRONMENT:-staging}"
+  
+  # Application logs volume
+  ${COOLIFY_SERVICE_NAME:-discord-bot}_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/logs
+    labels:
+      - "coolify.volume.name=${COOLIFY_SERVICE_NAME:-discord-bot}_logs"
+      - "coolify.volume.type=logs"
+      - "coolify.volume.service=${COOLIFY_SERVICE_NAME:-discord-bot}"
+      - "coolify.volume.environment=${COOLIFY_ENVIRONMENT:-staging}"
+  
+  # PostgreSQL data volume
+  ${COOLIFY_SERVICE_NAME:-discord-bot}_postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/postgres/data
+    labels:
+      - "coolify.volume.name=${COOLIFY_SERVICE_NAME:-discord-bot}_postgres_data"
+      - "coolify.volume.type=data"
+      - "coolify.volume.service=${COOLIFY_SERVICE_NAME:-discord-bot}-postgres"
+      - "coolify.volume.environment=${COOLIFY_ENVIRONMENT:-staging}"
+  
+  # Redis data volume
+  ${COOLIFY_SERVICE_NAME:-discord-bot}_redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/redis/data
+    labels:
+      - "coolify.volume.name=${COOLIFY_SERVICE_NAME:-discord-bot}_redis_data"
+      - "coolify.volume.type=data"
+      - "coolify.volume.service=${COOLIFY_SERVICE_NAME:-discord-bot}-redis"
+      - "coolify.volume.environment=${COOLIFY_ENVIRONMENT:-staging}"
+  
+  # Shared configuration volume
+  ${COOLIFY_SERVICE_NAME:-discord-bot}_config:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/config
+    labels:
+      - "coolify.volume.name=${COOLIFY_SERVICE_NAME:-discord-bot}_config"
+      - "coolify.volume.type=config"
+      - "coolify.volume.service=${COOLIFY_SERVICE_NAME:-discord-bot}"
+      - "coolify.volume.environment=${COOLIFY_ENVIRONMENT:-staging}"
+  
+  # Shared cache volume
+  ${COOLIFY_SERVICE_NAME:-discord-bot}_cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/cache
+    labels:
+      - "coolify.volume.name=${COOLIFY_SERVICE_NAME:-discord-bot}_cache"
+      - "coolify.volume.type=cache"
+      - "coolify.volume.service=${COOLIFY_SERVICE_NAME:-discord-bot}"
+      - "coolify.volume.environment=${COOLIFY_ENVIRONMENT:-staging}"

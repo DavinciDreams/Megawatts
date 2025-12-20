@@ -1,0 +1,412 @@
+# Grafana Configuration for Coolify Deployment
+# Optimized for Discord Bot with multi-replica support
+
+apiVersion: 1
+
+# Datasource Configuration
+datasources:
+  # Primary Prometheus datasource
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: true
+    jsonData:
+      timeInterval: "15s"
+      queryTimeout: "60s"
+      httpMethod: "POST"
+      manageAlerts: true
+      prometheusType: Prometheus
+      prometheusVersion: 2.40.0
+      cacheLevel: 'High'
+      incrementalQueryOverlapWindow: 10m
+      disableRecordingRules: false
+      incrementalQuery: true
+    secureJsonData: {}
+
+  # Discord Bot specific metrics
+  - name: Discord Bot Metrics
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: false
+    editable: true
+    jsonData:
+      timeInterval: "15s"
+      queryTimeout: "60s"
+      httpMethod: "POST"
+      manageAlerts: true
+      prometheusType: Prometheus
+      prometheusVersion: 2.40.0
+      cacheLevel: 'High'
+      incrementalQueryOverlapWindow: 10m
+    secureJsonData: {}
+
+  # Loki for log aggregation
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: false
+    editable: true
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        - datasourceUid: prometheus
+          matcherRegex: "trace_id=(\\w+)"
+          name: TraceID
+          url: "$${__value.raw}"
+    secureJsonData: {}
+
+  # PostgreSQL datasource
+  - name: PostgreSQL
+    type: postgres
+    access: proxy
+    url: postgres:5432
+    database: discord_bot
+    user: grafana
+    isDefault: false
+    editable: true
+    jsonData:
+      sslmode: "disable"
+      postgresVersion: 1500
+      timescaledb: false
+    secureJsonData:
+      password: ${GRAFANA_DB_PASSWORD}
+
+  # Redis datasource
+  - name: Redis
+    type: redis
+    access: proxy
+    url: redis:6379
+    isDefault: false
+    editable: true
+    jsonData:
+      client: "advanced"
+      poolSize: 5
+      timeout: 10
+      pingInterval: 30
+    secureJsonData:
+      password: ${REDIS_PASSWORD}
+
+# Dashboard Provisioning
+dashboards:
+  # Discord Bot Dashboards
+  - name: 'Discord Bot Dashboards'
+    orgId: 1
+    folder: 'Discord Bot'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/discord-bot
+
+  # System Dashboards
+  - name: 'System Dashboards'
+    orgId: 1
+    folder: 'System'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/system
+
+  # Database Dashboards
+  - name: 'Database Dashboards'
+    orgId: 1
+    folder: 'Database'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/database
+
+  # Coolify Infrastructure Dashboards
+  - name: 'Coolify Infrastructure'
+    orgId: 1
+    folder: 'Coolify'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards/coolify
+
+# Alert Notification Channels
+notifiers:
+  # Email notifications
+  - name: email
+    type: email
+    uid: email1
+    org_id: 1
+    is_default: true
+    settings:
+      addresses: alerts@example.com
+      singleEmail: false
+    delete_keys: []
+
+  # Slack notifications
+  - name: slack
+    type: slack
+    uid: slack1
+    org_id: 1
+    is_default: false
+    settings:
+      url: ${SLACK_WEBHOOK_URL}
+      channel: '#alerts'
+      uploadImage: true
+      mentionUsers: ''
+      mentionGroups: ''
+      mentionChannel: ''
+    delete_keys: []
+
+# Teams Configuration
+teams:
+  - name: 'DevOps Team'
+    orgId: 1
+    members:
+      - userId: 1
+        role: Admin
+      - userId: 2
+        role: Editor
+      - userId: 3
+        role: Viewer
+    preferences:
+      theme: 'light'
+      timezone: 'utc'
+      weekStart: 'sunday'
+
+# User Management
+users:
+  - login: admin
+    email: admin@example.com
+    name: Admin User
+    role: Admin
+    isGrafanaAdmin: true
+    password: ${GRAFANA_ADMIN_PASSWORD}
+
+  - login: devops
+    email: devops@example.com
+    name: DevOps User
+    role: Editor
+    isGrafanaAdmin: false
+    password: ${GRAFANA_DEVOPS_PASSWORD}
+
+  - login: viewer
+    email: viewer@example.com
+    name: Viewer User
+    role: Viewer
+    isGrafanaAdmin: false
+    password: ${GRAFANA_VIEWER_PASSWORD}
+
+# API Keys
+api_keys:
+  - name: 'Discord Bot API Key'
+    role: Editor
+    secondsToLive: 86400
+
+# Plugins
+plugins:
+  # Essential plugins for Discord Bot monitoring
+  - name: grafana-piechart-panel
+    version: latest
+  - name: grafana-worldmap-panel
+    version: latest
+  - name: grafana-clock-panel
+    version: latest
+  - name: grafana-simple-json-datasource
+    version: latest
+  - name: redis-datasource
+    version: latest
+  - name: postgres-datasource
+    version: latest
+  - name: grafana-loki-datasource
+    version: latest
+  - name: grafana-prometheus-datasource
+    version: latest
+  - name: grafana-alertlist-panel
+    version: latest
+  - name: grafana-table-panel
+    version: latest
+  - name: grafana-stat-panel
+    version: latest
+  - name: grafana-graph-panel
+    version: latest
+  - name: grafana-heatmap-panel
+    version: latest
+  - name: grafana-status-history-panel
+    version: latest
+
+# Global Settings
+global:
+  # Server settings
+  server:
+    protocol: http
+    http_addr: 0.0.0.0
+    http_port: 3000
+    domain: grafana.coolify.local
+    enforce_domain: false
+    root_url: "%(protocol)s://%(domain)s:%(http_port)s/"
+    serve_from_sub_path: false
+    router_logging: false
+    static_root_path: public
+    enable_gzip: false
+    cert_file: ""
+    cert_key: ""
+    socket: ""
+
+  # Database settings
+  database:
+    type: postgres
+    host: postgres:5432
+    name: grafana
+    user: grafana
+    password: ${GRAFANA_DB_PASSWORD}
+    ssl_mode: disable
+    path: grafana
+    max_idle_conn: 2
+    max_open_conn: 0
+    log_queries: false
+    cache_mode: private
+
+  # Security settings
+  security:
+    admin_user: admin
+    admin_password: ${GRAFANA_ADMIN_PASSWORD}
+    secret_key: ${GRAFANA_SECRET_KEY}
+    login_remember_days: 7
+    cookie_username: grafana_user
+    cookie_remember_name: grafana_remember
+    disable_gravatar: false
+    data_source_proxy_whitelist: ""
+    disable_signout_menu: false
+    api_key_max_seconds_to_live: -1
+    role_attribute_strict: false
+
+  # Users settings
+  users:
+    allow_sign_up: false
+    allow_org_create: false
+    auto_assign_org: true
+    auto_assign_org_role: Viewer
+    verify_email_enabled: false
+    login_hint: ""
+    password_hint: ""
+    default_theme: light
+    default_home_dashboard_path: ""
+    external_user_identity_signer: ""
+
+  # Auth settings
+  auth:
+    anonymous:
+      enabled: false
+      org_name: Main Org.
+      org_role: Viewer
+
+  # Session settings
+  session:
+    provider: file
+    provider_config: sessions
+    cookie_name: grafana_sess
+    cookie_secure: false
+    session_life_time: 86400
+    gc_interval: 86400
+
+  # Analytics settings
+  analytics:
+    reporting_enabled: false
+    check_for_updates: true
+    google_analytics_ua_id: ""
+    google_tag_manager_id: ""
+
+  # External image storage
+  external_image_storage:
+    provider: s3
+    s3:
+      bucket: grafana-storage
+      region: us-east-1
+      path: images/
+      access_key: ${S3_ACCESS_KEY_ID}
+      secret_key: ${S3_SECRET_ACCESS_KEY}
+
+  # Smtp settings
+  smtp:
+    enabled: true
+    host: smtp.gmail.com:587
+    user: ${SMTP_USER}
+    password: ${SMTP_PASSWORD}
+    cert_file: ""
+    key_file: ""
+    skip_verify: false
+    from_address: grafana@example.com
+    from_name: Grafana
+
+  # Alerting settings
+  alerting:
+    enabled: true
+    execute_alerts: true
+    error_or_timeout: alerting
+    nodata_or_nullvalues: no_data
+    concurrent_render_limit: 5
+    evaluation_timeout_seconds: 30
+    notification_timeout_seconds: 30
+    max_attempts: 3
+    min_interval_seconds: 1
+
+  # Unified alerting settings
+  unified_alerting:
+    enabled: true
+    execute_alerts: true
+    evaluation_timeout_seconds: 30
+    notification_timeout_seconds: 30
+    max_attempts: 3
+    min_interval_seconds: 1
+
+  # Expunge settings
+  expunge:
+    enable_expunge: false
+    expunge_interval: 1h
+    expurge_limit: 1000
+
+  # Dashboard settings
+  dashboards:
+    default_home_dashboard_path: ""
+    versions_to_keep: 20
+
+  # Metrics settings
+  metrics:
+    enabled: true
+    interval_seconds: 10
+    basic_auth_username: ""
+    basic_auth_password: ""
+    graphite:
+      address: ""
+      prefix: ""
+
+  # Grafana.com settings
+  grafana_com:
+    url: https://grafana.com
+
+  # Tracing settings
+  tracing:
+    jaeger:
+      address: ""
+      always_included_tag: ""
+      sampler_type: ""
+      sampler_param: ""
+    zipkin:
+      address: ""
+
+  # Image renderer settings
+  rendering:
+    server_url: ""
+    callback_url: ""
+    concurrent_render_request_limit: 30
+
+  # Feature toggles
+  feature_toggles:
+    enable: ""

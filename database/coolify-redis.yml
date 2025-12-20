@@ -1,0 +1,405 @@
+# =============================================================================
+# Redis Configuration for Coolify Deployment
+# =============================================================================
+# This file defines Redis configurations optimized for Discord bot deployment
+# across different environments (development, staging, production) in Coolify.
+# =============================================================================
+
+version: "3.8"
+
+# =============================================================================
+# Base Redis Configuration
+# =============================================================================
+x-redis-base: &redis-base
+  image: redis:7-alpine
+  restart: unless-stopped
+  networks:
+    - bot-network
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+  labels:
+    - "coolify.service.name=redis"
+    - "coolify.service.type=cache"
+  healthcheck:
+    test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 30s
+
+# =============================================================================
+# Environment-specific Redis Configurations
+# =============================================================================
+services:
+  # Development Environment Redis
+  redis-dev:
+    <<: *redis-base
+    container_name: discord-bot-redis-dev
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass ${REDIS_PASSWORD_DEV}
+    ports:
+      - "${REDIS_PORT_DEV:-6381}:6379"
+    volumes:
+      - redis_data_dev:/data
+      - ./database/configs/redis-dev.conf:/usr/local/etc/redis/redis.conf
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+        reservations:
+          cpus: '0.125'
+          memory: 64M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # Staging Environment Redis
+  redis-staging:
+    <<: *redis-base
+    container_name: discord-bot-redis-staging
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass ${REDIS_PASSWORD_STAGING}
+    ports:
+      - "${REDIS_PORT_STAGING:-6380}:6379"
+    volumes:
+      - redis_data_staging:/data
+      - ./database/configs/redis-staging.conf:/usr/local/etc/redis/redis.conf
+      - ./database/backups:/backups
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.125'
+          memory: 128M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # Production Environment Redis (Primary)
+  redis-primary:
+    <<: *redis-base
+    container_name: discord-bot-redis-primary
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass ${REDIS_PASSWORD_PROD}
+    ports:
+      - "${REDIS_PORT_PRIMARY:-6379}:6379"
+    volumes:
+      - redis_data_primary:/data
+      - ./database/configs/redis-primary.conf:/usr/local/etc/redis/redis.conf
+      - ./database/backups:/backups
+      - ./database/scripts/setup-redis-cluster.sh:/setup-redis-cluster.sh
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # Production Environment Redis (Replica)
+  redis-replica:
+    <<: *redis-base
+    container_name: discord-bot-redis-replica
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass ${REDIS_PASSWORD_PROD}
+    ports:
+      - "${REDIS_PORT_REPLICA:-6380}:6379"
+    volumes:
+      - redis_data_replica:/data
+      - ./database/configs/redis-replica.conf:/usr/local/etc/redis/redis.conf
+    deploy:
+      resources:
+        limits:
+          cpus: '0.375'
+          memory: 384M
+        reservations:
+          cpus: '0.1875'
+          memory: 192M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    depends_on:
+      - redis-primary
+
+  # Production Environment Redis (Cluster Nodes)
+  redis-cluster-node-1:
+    <<: *redis-base
+    container_name: discord-bot-redis-cluster-1
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass ${REDIS_PASSWORD_PROD}
+    ports:
+      - "${REDIS_PORT_CLUSTER_1:-6381}:6379"
+      - "${REDIS_PORT_CLUSTER_BUS_1:-16381}:16379"
+    volumes:
+      - redis_data_cluster_1:/data
+      - ./database/configs/redis-cluster.conf:/usr/local/etc/redis/redis.conf
+    deploy:
+      resources:
+        limits:
+          cpus: '0.375'
+          memory: 384M
+        reservations:
+          cpus: '0.1875'
+          memory: 192M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  redis-cluster-node-2:
+    <<: *redis-base
+    container_name: discord-bot-redis-cluster-2
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass ${REDIS_PASSWORD_PROD}
+    ports:
+      - "${REDIS_PORT_CLUSTER_2:-6382}:6379"
+      - "${REDIS_PORT_CLUSTER_BUS_2:-16382}:16379"
+    volumes:
+      - redis_data_cluster_2:/data
+      - ./database/configs/redis-cluster.conf:/usr/local/etc/redis/redis.conf
+    deploy:
+      resources:
+        limits:
+          cpus: '0.375'
+          memory: 384M
+        reservations:
+          cpus: '0.1875'
+          memory: 192M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  redis-cluster-node-3:
+    <<: *redis-base
+    container_name: discord-bot-redis-cluster-3
+    command: redis-server /usr/local/etc/redis/redis.conf --requirepass ${REDIS_PASSWORD_PROD}
+    ports:
+      - "${REDIS_PORT_CLUSTER_3:-6383}:6379"
+      - "${REDIS_PORT_CLUSTER_BUS_3:-16383}:16379"
+    volumes:
+      - redis_data_cluster_3:/data
+      - ./database/configs/redis-cluster.conf:/usr/local/etc/redis/redis.conf
+    deploy:
+      resources:
+        limits:
+          cpus: '0.375'
+          memory: 384M
+        reservations:
+          cpus: '0.1875'
+          memory: 192M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # Redis Cluster Initialization Service
+  redis-cluster-init:
+    image: redis:7-alpine
+    container_name: discord-bot-redis-cluster-init
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD_PROD}
+      - CLUSTER_NODES=redis-cluster-node-1:6379 redis-cluster-node-2:6379 redis-cluster-node-3:6379
+    volumes:
+      - ./database/scripts/init-redis-cluster.sh:/init-redis-cluster.sh
+    networks:
+      - bot-network
+    command: /bin/sh -c "chmod +x /init-redis-cluster.sh && sleep 30 && /init-redis-cluster.sh"
+    depends_on:
+      - redis-cluster-node-1
+      - redis-cluster-node-2
+      - redis-cluster-node-3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+    labels:
+      - "coolify.service.name=redis-cluster-init"
+      - "coolify.service.type=init"
+
+  # Redis Sentinel for High Availability
+  redis-sentinel-1:
+    image: redis:7-alpine
+    container_name: discord-bot-redis-sentinel-1
+    command: redis-sentinel /usr/local/etc/redis/sentinel.conf
+    ports:
+      - "${REDIS_SENTINEL_PORT_1:-26379}:26379"
+    volumes:
+      - ./database/configs/redis-sentinel.conf:/usr/local/etc/redis/sentinel.conf
+    networks:
+      - bot-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.125'
+          memory: 64M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    depends_on:
+      - redis-primary
+      - redis-replica
+    labels:
+      - "coolify.service.name=redis-sentinel"
+      - "coolify.service.type=sentinel"
+
+  redis-sentinel-2:
+    image: redis:7-alpine
+    container_name: discord-bot-redis-sentinel-2
+    command: redis-sentinel /usr/local/etc/redis/sentinel.conf
+    ports:
+      - "${REDIS_SENTINEL_PORT_2:-26380}:26379"
+    volumes:
+      - ./database/configs/redis-sentinel.conf:/usr/local/etc/redis/sentinel.conf
+    networks:
+      - bot-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.125'
+          memory: 64M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    depends_on:
+      - redis-primary
+      - redis-replica
+    labels:
+      - "coolify.service.name=redis-sentinel"
+      - "coolify.service.type=sentinel"
+
+  redis-sentinel-3:
+    image: redis:7-alpine
+    container_name: discord-bot-redis-sentinel-3
+    command: redis-sentinel /usr/local/etc/redis/sentinel.conf
+    ports:
+      - "${REDIS_SENTINEL_PORT_3:-26381}:26379"
+    volumes:
+      - ./database/configs/redis-sentinel.conf:/usr/local/etc/redis/sentinel.conf
+    networks:
+      - bot-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.125'
+          memory: 64M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    depends_on:
+      - redis-primary
+      - redis-replica
+    labels:
+      - "coolify.service.name=redis-sentinel"
+      - "coolify.service.type=sentinel"
+
+  # Redis Backup Service
+  redis-backup:
+    image: redis:7-alpine
+    container_name: discord-bot-redis-backup
+    environment:
+      - REDIS_HOST=${REDIS_BACKUP_HOST:-redis-primary}
+      - REDIS_PORT=${REDIS_BACKUP_PORT:-6379}
+      - REDIS_PASSWORD=${REDIS_PASSWORD_PROD}
+      - BACKUP_SCHEDULE=${REDIS_BACKUP_SCHEDULE:-0 3 * * *}
+      - BACKUP_RETENTION_DAYS=${REDIS_BACKUP_RETENTION_DAYS:-30}
+    volumes:
+      - redis_backups:/backups
+      - ./database/scripts/backup-redis.sh:/backup.sh
+    networks:
+      - bot-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+    command: /bin/sh -c "chmod +x /backup.sh && crond -f"
+    labels:
+      - "coolify.service.name=redis-backup"
+      - "coolify.service.type=backup"
+
+# =============================================================================
+# Volume Definitions
+# =============================================================================
+volumes:
+  redis_data_dev:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${REDIS_DATA_PATH_DEV:-./data/redis/dev}
+  
+  redis_data_staging:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${REDIS_DATA_PATH_STAGING:-./data/redis/staging}
+  
+  redis_data_primary:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${REDIS_DATA_PATH_PRIMARY:-./data/redis/primary}
+  
+  redis_data_replica:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${REDIS_DATA_PATH_REPLICA:-./data/redis/replica}
+  
+  redis_data_cluster_1:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${REDIS_DATA_PATH_CLUSTER_1:-./data/redis/cluster/1}
+  
+  redis_data_cluster_2:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${REDIS_DATA_PATH_CLUSTER_2:-./data/redis/cluster/2}
+  
+  redis_data_cluster_3:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${REDIS_DATA_PATH_CLUSTER_3:-./data/redis/cluster/3}
+  
+  redis_backups:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${REDIS_BACKUP_PATH:-./backups/redis}
+
+# =============================================================================
+# Network Configuration
+# =============================================================================
+networks:
+  bot-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${REDIS_NETWORK_SUBNET:-172.22.0.0/16}
+    labels:
+      - "coolify.network.name=bot-network"
+      - "coolify.network.type=internal"

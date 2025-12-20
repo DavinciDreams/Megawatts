@@ -1,0 +1,248 @@
+# =============================================================================
+# PostgreSQL Configuration for Coolify Deployment
+# =============================================================================
+# This file defines PostgreSQL configurations optimized for Discord bot deployment
+# across different environments (development, staging, production) in Coolify.
+# =============================================================================
+
+version: "3.8"
+
+# =============================================================================
+# Base PostgreSQL Configuration
+# =============================================================================
+x-postgres-base: &postgres-base
+  image: postgres:15-alpine
+  restart: unless-stopped
+  networks:
+    - bot-network
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+  labels:
+    - "coolify.service.name=postgres"
+    - "coolify.service.type=database"
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 30s
+
+# =============================================================================
+# Environment-specific PostgreSQL Configurations
+# =============================================================================
+services:
+  # Development Environment PostgreSQL
+  postgres-dev:
+    <<: *postgres-base
+    container_name: discord-bot-postgres-dev
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB_DEV:-discord_bot_dev}
+      - POSTGRES_USER=${POSTGRES_USER_DEV:-discord_bot}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD_DEV}
+      - POSTGRES_INITDB_ARGS="--encoding=UTF8 --data-checksum"
+    ports:
+      - "${POSTGRES_PORT_DEV:-5434}:5432"
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./database/configs/postgresql-dev.conf:/etc/postgresql/postgresql.conf
+      - ./database/configs/pg_hba-dev.conf:/etc/postgresql/pg_hba.conf
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf -c hba_file=/etc/postgresql/pg_hba.conf
+
+  # Staging Environment PostgreSQL
+  postgres-staging:
+    <<: *postgres-base
+    container_name: discord-bot-postgres-staging
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB_STAGING:-discord_bot_staging}
+      - POSTGRES_USER=${POSTGRES_USER_STAGING:-discord_bot}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD_STAGING}
+      - POSTGRES_INITDB_ARGS="--encoding=UTF8 --data-checksum"
+    ports:
+      - "${POSTGRES_PORT_STAGING:-5433}:5432"
+    volumes:
+      - postgres_data_staging:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./database/configs/postgresql-staging.conf:/etc/postgresql/postgresql.conf
+      - ./database/configs/pg_hba-staging.conf:/etc/postgresql/pg_hba.conf
+      - ./database/backups:/backups
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf -c hba_file=/etc/postgresql/pg_hba.conf
+
+  # Production Environment PostgreSQL (Primary)
+  postgres-primary:
+    <<: *postgres-base
+    container_name: discord-bot-postgres-primary
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB_PROD:-discord_bot}
+      - POSTGRES_USER=${POSTGRES_USER_PROD:-discord_bot}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD_PROD}
+      - POSTGRES_INITDB_ARGS="--encoding=UTF8 --data-checksum"
+      - POSTGRES_REPLICATION_USER=${POSTGRES_REPLICATION_USER:-replicator}
+      - POSTGRES_REPLICATION_PASSWORD=${POSTGRES_REPLICATION_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT_PRIMARY:-5432}:5432"
+    volumes:
+      - postgres_data_primary:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./database/configs/postgresql-primary.conf:/etc/postgresql/postgresql.conf
+      - ./database/configs/pg_hba-primary.conf:/etc/postgresql/pg_hba.conf
+      - ./database/backups:/backups
+      - ./database/scripts/setup-replication.sh:/docker-entrypoint-initdb.d/setup-replication.sh
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf -c hba_file=/etc/postgresql/pg_hba.conf
+
+  # Production Environment PostgreSQL (Replica)
+  postgres-replica:
+    <<: *postgres-base
+    container_name: discord-bot-postgres-replica
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB_PROD:-discord_bot}
+      - POSTGRES_USER=${POSTGRES_USER_PROD:-discord_bot}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD_PROD}
+      - PGUSER=${POSTGRES_USER_PROD:-discord_bot}
+      - POSTGRES_REPLICATION_USER=${POSTGRES_REPLICATION_USER:-replicator}
+      - POSTGRES_REPLICATION_PASSWORD=${POSTGRES_REPLICATION_PASSWORD}
+      - POSTGRES_MASTER_SERVICE=postgres-primary
+    ports:
+      - "${POSTGRES_PORT_REPLICA:-5433}:5432"
+    volumes:
+      - postgres_data_replica:/var/lib/postgresql/data
+      - ./database/configs/postgresql-replica.conf:/etc/postgresql/postgresql.conf
+      - ./database/configs/pg_hba-replica.conf:/etc/postgresql/pg_hba.conf
+      - ./database/scripts/setup-replica.sh:/docker-entrypoint-initdb.d/setup-replica.sh
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '0.75'
+          memory: 768M
+        reservations:
+          cpus: '0.375'
+          memory: 384M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    depends_on:
+      - postgres-primary
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf -c hba_file=/etc/postgresql/pg_hba.conf
+
+  # PostgreSQL Backup Service
+  postgres-backup:
+    image: postgres:15-alpine
+    container_name: discord-bot-postgres-backup
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB_PROD:-discord_bot}
+      - POSTGRES_USER=${POSTGRES_USER_PROD:-discord_bot}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD_PROD}
+      - POSTGRES_HOST=${POSTGRES_BACKUP_HOST:-postgres-primary}
+      - BACKUP_SCHEDULE=${POSTGRES_BACKUP_SCHEDULE:-0 2 * * *}
+      - BACKUP_RETENTION_DAYS=${POSTGRES_BACKUP_RETENTION_DAYS:-30}
+    volumes:
+      - postgres_backups:/backups
+      - ./database/scripts/backup-postgres.sh:/backup.sh
+    networks:
+      - bot-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+    command: /bin/sh -c "chmod +x /backup.sh && crond -f"
+    labels:
+      - "coolify.service.name=postgres-backup"
+      - "coolify.service.type=backup"
+
+# =============================================================================
+# Volume Definitions
+# =============================================================================
+volumes:
+  postgres_data_dev:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${POSTGRES_DATA_PATH_DEV:-./data/postgres/dev}
+  
+  postgres_data_staging:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${POSTGRES_DATA_PATH_STAGING:-./data/postgres/staging}
+  
+  postgres_data_primary:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${POSTGRES_DATA_PATH_PRIMARY:-./data/postgres/primary}
+  
+  postgres_data_replica:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${POSTGRES_DATA_PATH_REPLICA:-./data/postgres/replica}
+  
+  postgres_backups:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${POSTGRES_BACKUP_PATH:-./backups/postgres}
+
+# =============================================================================
+# Network Configuration
+# =============================================================================
+networks:
+  bot-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${POSTGRES_NETWORK_SUBNET:-172.22.0.0/16}
+    labels:
+      - "coolify.network.name=bot-network"
+      - "coolify.network.type=internal"

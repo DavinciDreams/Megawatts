@@ -1,0 +1,341 @@
+# Prometheus Configuration for Coolify Deployment
+# Optimized for Discord Bot with multi-replica support
+
+global:
+  scrape_interval: 15s                # How frequently to scrape targets
+  evaluation_interval: 15s             # How frequently to evaluate rules
+  external_labels:
+    environment: 'coolify'
+    service: 'discord-bot'
+    deployment: 'coolify'
+
+# Rule files for alerting
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+# Alerting configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
+      timeout: 10s
+      api_version: v2
+
+# Remote write configuration for long-term storage
+remote_write:
+  - url: "http://prometheus-remote-storage:9201/api/v1/write"
+    queue_config:
+      max_samples_per_send: 1000
+      max_shards: 200
+      capacity: 2500
+      min_shards: 1
+      max_retries: 3
+    write_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'go_.*|process_.*|prometheus_.*'
+        action: drop
+
+# Scrape configurations optimized for Coolify
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 30s
+    metrics_path: /metrics
+    honor_labels: true
+
+  # Discord Bot Application - Multi-replica support
+  - job_name: 'discord-bot'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - coolify
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: discord-bot
+      - source_labels: [__meta_kubernetes_pod_ip]
+        target_label: __address__
+        replacement: ${1}:8080
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: instance
+      - source_labels: [__meta_kubernetes_pod_label_replica]
+        target_label: replica
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+    scrape_interval: 15s
+    metrics_path: /metrics
+    params:
+      format: ['prometheus']
+    honor_labels: true
+
+  # PostgreSQL Database with Exporter
+  - job_name: 'postgres'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - coolify
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: postgres
+      - source_labels: [__meta_kubernetes_pod_ip]
+        target_label: __address__
+        replacement: ${1}:9187
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: instance
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+    scrape_interval: 30s
+    metrics_path: /metrics
+
+  # Redis Cache with Exporter
+  - job_name: 'redis'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - coolify
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: redis
+      - source_labels: [__meta_kubernetes_pod_ip]
+        target_label: __address__
+        replacement: ${1}:9121
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: instance
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+    scrape_interval: 30s
+    metrics_path: /metrics
+
+  # Nginx Reverse Proxy with Exporter
+  - job_name: 'nginx'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - coolify
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: nginx
+      - source_labels: [__meta_kubernetes_pod_ip]
+        target_label: __address__
+        replacement: ${1}:9113
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: instance
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+    scrape_interval: 30s
+    metrics_path: /metrics
+
+  # Node Exporter for System Metrics
+  - job_name: 'node-exporter'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - coolify
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: node-exporter
+      - source_labels: [__meta_kubernetes_pod_ip]
+        target_label: __address__
+        replacement: ${1}:9100
+      - source_labels: [__meta_kubernetes_pod_node_name]
+        target_label: instance
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+    scrape_interval: 30s
+    metrics_path: /metrics
+
+  # cAdvisor for Container Metrics
+  - job_name: 'cadvisor'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - coolify
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: cadvisor
+      - source_labels: [__meta_kubernetes_pod_ip]
+        target_label: __address__
+        replacement: ${1}:8080
+      - source_labels: [__meta_kubernetes_pod_node_name]
+        target_label: instance
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+    scrape_interval: 30s
+    metrics_path: /metrics
+
+  # Grafana Metrics
+  - job_name: 'grafana'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - coolify
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: grafana
+      - source_labels: [__meta_kubernetes_pod_ip]
+        target_label: __address__
+        replacement: ${1}:3000
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: instance
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+    scrape_interval: 30s
+    metrics_path: /metrics
+
+  # Discord API Health Check
+  - job_name: 'discord-api'
+    static_configs:
+      - targets: ['discord.com']
+    scrape_interval: 60s
+    scheme: https
+    metrics_path: /api/v10/gateway
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'discord-api'
+      - source_labels: [__address__]
+        target_label: __address__
+        replacement: 'discord.com'
+      - source_labels: [__metrics_path__]
+        target_label: __metrics_path__
+        replacement: /api/v10/gateway
+
+  # Coolify Infrastructure Metrics
+  - job_name: 'coolify-infrastructure'
+    static_configs:
+      - targets: ['coolify-api:3000']
+    scrape_interval: 30s
+    metrics_path: /metrics
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'coolify-api'
+
+  # Custom Application Metrics
+  - job_name: 'discord-bot-custom'
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+            - coolify
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: discord-bot
+      - source_labels: [__meta_kubernetes_pod_ip]
+        target_label: __address__
+        replacement: ${1}:9095
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: instance
+      - source_labels: [__meta_kubernetes_pod_label_replica]
+        target_label: replica
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+    scrape_interval: 15s
+    metrics_path: /custom-metrics
+    honor_labels: true
+
+# Recording rules for performance optimization
+recording_rules:
+  - name: discord_bot_rules.yml
+    interval: 30s
+    rules:
+      # Calculate rate of Discord events
+      - record: discord:events:rate_5m
+        expr: rate(discord_events_total[5m])
+      
+      # Calculate error rate
+      - record: discord:errors:rate_5m
+        expr: rate(discord_errors_total[5m])
+      
+      # Calculate response time percentiles
+      - record: discord:response_time:p95_5m
+        expr: histogram_quantile(0.95, rate(discord_response_time_seconds_bucket[5m]))
+      
+      # Calculate memory usage per replica
+      - record: discord:memory:per_replica
+        expr: container_memory_usage_bytes{pod=~"discord-bot-.*"} / count(container_memory_usage_bytes{pod=~"discord-bot-.*"})
+      
+      # Calculate CPU usage per replica
+      - record: discord:cpu:per_replica
+        expr: rate(container_cpu_usage_seconds_total{pod=~"discord-bot-.*"}[5m]) / count(container_cpu_usage_seconds_total{pod=~"discord-bot-.*"})
+
+# Alerting rules
+alerting_rules:
+  - name: discord_bot_alerts.yml
+    rules:
+      # Bot is down
+      - alert: DiscordBotDown
+        expr: up{job="discord-bot"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Discord Bot is down"
+          description: "Discord Bot has been down for more than 1 minute"
+      
+      # High error rate
+      - alert: DiscordBotHighErrorRate
+        expr: discord:errors:rate_5m > 0.1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Discord Bot high error rate"
+          description: "Discord Bot error rate is {{ $value }} errors per second"
+      
+      # High memory usage
+      - alert: DiscordBotHighMemoryUsage
+        expr: container_memory_usage_bytes{pod=~"discord-bot-.*"} / container_spec_memory_limit_bytes{pod=~"discord-bot-.*"} > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Discord Bot high memory usage"
+          description: "Discord Bot memory usage is above 80%"
+      
+      # High CPU usage
+      - alert: DiscordBotHighCPUUsage
+        expr: rate(container_cpu_usage_seconds_total{pod=~"discord-bot-.*"}[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Discord Bot high CPU usage"
+          description: "Discord Bot CPU usage is above 80%"
+      
+      # Database connection issues
+      - alert: DatabaseConnectionIssues
+        expr: pg_stat_activity_count{datname=~"discord_bot.*"} > 80
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection issues"
+          description: "Database has {{ $value }} active connections"
+      
+      # Redis memory usage
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis high memory usage"
+          description: "Redis memory usage is above 80%"
