@@ -50,7 +50,6 @@
     "@anthropic-ai/sdk": "^0.71.2",
     "@discordjs/core": "^2.4.0",
     "@qdrant/js-client-rest": "^1.16.2",
-    "@types/jest": "^29.0.0",
     "@types/lodash": "^4.14.195",
     "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
@@ -88,15 +87,23 @@
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
     "@types/supertest": "^6.0.0",
     "concurrently": "^8.0.0",
     "nodemon": "^3.0.0",
-    "supertest": "^6.0.0"
+    "supertest": "^6.0.0",
+    "ts-jest": "^29.4.6"
   },
   "jest": {
     "preset": "ts-jest",
     "testEnvironment": "node",
-    "collectCoverageFrom": "src",
+    "collectCoverageFrom": [
+      "src/**/*.ts",
+      "!src/**/*.d.ts",
+      "!src/**/__tests__/**",
+      "!src/**/*.test.ts",
+      "!src/**/*.spec.ts"
+    ],
     "coverageDirectory": "coverage",
     "coverageReporters": [
       "text",
