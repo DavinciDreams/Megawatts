@@ -1,5 +1,5 @@
 import { Message } from 'discord.js';
-import { Logger } from '../../utils/logger';
+import { Logger } from '../../utils/logger.js';
 import {
   MessageContext,
   RoutingDecision,
