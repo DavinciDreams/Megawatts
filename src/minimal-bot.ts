@@ -3,6 +3,8 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import { MessageRouter } from './core/processing/messageRouter.js';
+import { DEFAULT_PIPELINE_CONFIG } from './core/processing/types.js';
 
 // Load environment variables
 dotenv.config();
@@ -159,12 +161,14 @@ class MinimalDiscordBot {
   private healthService: SimpleHealthService;
   private healthServer: HealthServer;
   private token: string;
+  private messageRouter: MessageRouter;
 
   constructor(token: string) {
     this.token = token;
     this.logger = new SimpleLogger();
     this.healthService = new SimpleHealthService();
     this.healthServer = new HealthServer(this.healthService);
+    this.messageRouter = new MessageRouter(DEFAULT_PIPELINE_CONFIG);
     
     this.client = new Client({
       intents: [
@@ -228,8 +232,9 @@ class MinimalDiscordBot {
   }
 
   private async handleMessage(message: Message): Promise<void> {
-    // Ignore bot messages
-    if (message.author.bot) return;
+    if (await this.messageRouter.shouldIgnoreMessage(message)) {
+      return;
+    }
     
     this.logger.info(`Received message from ${message.author.username}: ${message.content}`);
 

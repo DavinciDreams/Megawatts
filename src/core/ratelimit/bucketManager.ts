@@ -344,9 +344,9 @@ export class BucketManager {
     }
     
     // Reject all queued requests
-    bucket.requests.forEach((request: QueuedRequest) => {
+    for (const request of bucket.requests) {
       request.reject(new Error(`Bucket ${bucketId} was reset`));
-    });
+    }
     
     // Reset bucket state
     bucket.remaining = bucket.limit;
@@ -362,18 +362,17 @@ export class BucketManager {
   /**
    * Delete a bucket
    */
-  async deleteBucket(bucketId: string): Promise<void> {
+  async deleteBucket(bucketId: string): Promise<boolean> {
     const bucket = await this.store.getBucket(bucketId);
     
     if (bucket) {
       // Reject all queued requests
-      bucket.requests.forEach((request: QueuedRequest) => {
+      for (const request of bucket.requests) {
         request.reject(new Error(`Bucket ${bucketId} was deleted`));
-      });
+      }
     }
     
-    await this.store.deleteBucket(bucketId);
-    
     logger.debug(`Deleted rate limit bucket: ${bucketId}`);
+    return this.store.deleteBucket(bucketId);
   }
 }

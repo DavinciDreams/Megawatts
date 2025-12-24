@@ -5,6 +5,8 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { HealthManager } from './core/health/index.js';
 import { Logger as UtilsLogger } from './utils/logger.js';
+import { MessageRouter } from './core/processing/messageRouter.js';
+import { DEFAULT_PIPELINE_CONFIG } from './core/processing/types.js';
 
 // Load environment variables FIRST
 dotenv.config();
@@ -177,6 +179,7 @@ class SelfEditingDiscordBot {
   private healthManager: HealthManager;
   private healthServer: HealthServer;
   private isReady: boolean = false;
+  private messageRouter: MessageRouter;
 
   constructor(
     private token: string,
@@ -187,6 +190,7 @@ class SelfEditingDiscordBot {
     this.config = config || new BotConfig();
     this.healthManager = new HealthManager();
     this.healthServer = new HealthServer(this.healthManager, this.config);
+    this.messageRouter = new MessageRouter(DEFAULT_PIPELINE_CONFIG);
   }
 
   // Initialize Discord client and health server
@@ -300,8 +304,9 @@ class SelfEditingDiscordBot {
 
   // Message handling with intent recognition
   private async handleMessage(message: Message): Promise<void> {
-    // Ignore bot messages
-    if (message.author.bot) return;
+    if (await this.messageRouter.shouldIgnoreMessage(message)) {
+      return;
+    }
     
     this.logger.info(`Received message from ${message.author.username}: ${message.content}`);
 

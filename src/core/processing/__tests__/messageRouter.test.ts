@@ -67,6 +67,7 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
     test('should ignore messages in non-allowed channels when respondToMentions is false', async () => {
       config.respondToMentions = false;
       config.allowedChannels = ['allowed-channel-1'];
+      router.updateConfig(config);
       
       const message = createMockMessage({
         channel: { id: 'disallowed-channel', name: 'general' }
@@ -83,6 +84,7 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
 
     test('should allow messages in allowed channels', async () => {
       config.allowedChannels = ['allowed-channel-1'];
+      router.updateConfig(config);
       
       const message = createMockMessage({
         channel: { id: 'allowed-channel-1', name: 'general' }
@@ -97,10 +99,11 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
     });
 
     test('should allow messages in allowed channel names', async () => {
-      config.allowedChannelNames = ['katbot'];
+      config.allowedChannelNames = ['megawatts'];
+      router.updateConfig(config);
       
       const message = createMockMessage({
-        channel: { id: 'some-channel-id', name: 'katbot' }
+        channel: { id: 'some-channel-id', name: 'megawatts' }
       });
       const context = createMockContext({ channelId: 'some-channel-id' });
       const intent = createMockIntent();
@@ -114,6 +117,7 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
     test('should allow all channels when no restrictions are set', async () => {
       config.allowedChannels = [];
       config.allowedChannelNames = [];
+      router.updateConfig(config);
       
       const message = createMockMessage();
       const context = createMockContext();
@@ -130,6 +134,7 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
     test('should allow messages with bot mentions when respondToMentions is true', async () => {
       config.respondToMentions = true;
       config.allowedChannels = ['allowed-channel'];
+      router.updateConfig(config);
       
       const message = createMockMessage({
         channel: { id: 'disallowed-channel', name: 'general' },
@@ -150,6 +155,7 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
     test('should ignore messages without bot mentions in disallowed channels', async () => {
       config.respondToMentions = true;
       config.allowedChannels = ['allowed-channel'];
+      router.updateConfig(config);
       
       const message = createMockMessage({
         channel: { id: 'disallowed-channel', name: 'general' },
@@ -170,6 +176,7 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
     test('should ignore messages when respondToMentions is false even with mentions', async () => {
       config.respondToMentions = false;
       config.allowedChannels = ['allowed-channel'];
+      router.updateConfig(config);
       
       const message = createMockMessage({
         channel: { id: 'disallowed-channel', name: 'general' },
@@ -190,7 +197,8 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
 
   describe('Edge Cases', () => {
     test('should handle DM messages (no channel name)', async () => {
-      config.allowedChannelNames = ['katbot'];
+      config.allowedChannelNames = ['megawatts'];
+      router.updateConfig(config);
       
       const message = createMockMessage({
         channel: { id: 'dm-channel' } // No name property for DM channels
@@ -206,7 +214,8 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
     });
 
     test('should handle missing channel info gracefully', async () => {
-      config.allowedChannelNames = ['katbot'];
+      config.allowedChannelNames = ['megawatts'];
+      router.updateConfig(config);
       
       const message = createMockMessage({
         channel: null
@@ -226,7 +235,7 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
     test('should use default configuration values', () => {
       expect(DEFAULT_PIPELINE_CONFIG.respondToMentions).toBe(true);
       expect(DEFAULT_PIPELINE_CONFIG.allowedChannels).toEqual([]);
-      expect(DEFAULT_PIPELINE_CONFIG.allowedChannelNames).toEqual(['katbot']);
+      expect(DEFAULT_PIPELINE_CONFIG.allowedChannelNames).toEqual([process.env.BOT_RESPONSE_CHANNEL || 'megawatts']);
     });
   });
 });
