@@ -304,36 +304,46 @@ class SelfEditingDiscordBot {
 
   // Message handling with intent recognition
   private async handleMessage(message: Message): Promise<void> {
-    if (await this.messageRouter.shouldIgnoreMessage(message)) {
+    // Build context, intent, and safety objects for routing
+    const context = {
+      userId: message.author.id,
+      guildId: message.guild?.id,
+      channelId: message.channel.id,
+      messageId: message.id,
+      timestamp: message.createdAt,
+    };
+    // Minimal intent and safety for channel filtering
+    const intent = { type: 'help', confidence: 1, entities: [] };
+    const safety = { isSafe: true, riskLevel: 'low', violations: [], confidence: 1, requiresAction: false };
+    const routing = this.messageRouter.routeMessage
+      ? await this.messageRouter.routeMessage(message, context, intent, safety)
+      : { handler: 'ignore', shouldRespond: false };
+    if (routing.handler === 'ignore' || !routing.shouldRespond) {
       return;
     }
-    
+    // ...existing code...
     this.logger.info(`Received message from ${message.author.username}: ${message.content}`);
-
-    // Simple intent recognition
+    // ...existing code...
     const content = message.content.toLowerCase().trim();
-    let intent: BotIntent;
-
+    let intentType: BotIntent;
     if (content.startsWith('!help')) {
-      intent = BotIntent.Help;
+      intentType = BotIntent.Help;
     } else if (content.startsWith('!ping')) {
-      intent = BotIntent.Ping;
+      intentType = BotIntent.Ping;
     } else if (content.startsWith('!status')) {
-      intent = BotIntent.Status;
+      intentType = BotIntent.Status;
     } else if (content.startsWith('!config')) {
-      intent = BotIntent.Config;
+      intentType = BotIntent.Config;
     } else if (content.startsWith('!self_edit')) {
-      intent = BotIntent.SelfEdit;
+      intentType = BotIntent.SelfEdit;
     } else if (content.startsWith('!analyze')) {
-      intent = BotIntent.Analyze;
+      intentType = BotIntent.Analyze;
     } else if (content.startsWith('!optimize')) {
-      intent = BotIntent.Optimize;
+      intentType = BotIntent.Optimize;
     } else {
-      // Default to conversation
-      intent = BotIntent.Help;
+      intentType = BotIntent.Help;
     }
-
-    await this.handleIntent(intent, message);
+    await this.handleIntent(intentType, message);
   }
 
   // Intent handlers

@@ -373,6 +373,7 @@ export class BucketManager {
     }
     
     logger.debug(`Deleted rate limit bucket: ${bucketId}`);
-    return this.store.deleteBucket(bucketId);
+    await this.store.deleteBucket(bucketId);
+    return true;
   }
 }

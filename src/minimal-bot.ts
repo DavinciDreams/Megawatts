@@ -232,14 +232,26 @@ class MinimalDiscordBot {
   }
 
   private async handleMessage(message: Message): Promise<void> {
-    if (await this.messageRouter.shouldIgnoreMessage(message)) {
+    // Build context, intent, and safety objects for routing
+    const context = {
+      userId: message.author.id,
+      guildId: message.guild?.id,
+      channelId: message.channel.id,
+      messageId: message.id,
+      timestamp: message.createdAt,
+    };
+    // Minimal intent and safety for channel filtering
+    const intent = { type: 'help', confidence: 1, entities: [] };
+    const safety = { isSafe: true, riskLevel: 'low', violations: [], confidence: 1, requiresAction: false };
+    const routing = this.messageRouter.routeMessage
+      ? await this.messageRouter.routeMessage(message, context, intent, safety)
+      : { handler: 'ignore', shouldRespond: false };
+    if (routing.handler === 'ignore' || !routing.shouldRespond) {
       return;
     }
-    
+    // ...existing code...
     this.logger.info(`Received message from ${message.author.username}: ${message.content}`);
-
     const content = message.content.toLowerCase().trim();
-
     try {
       if (content === '!help' || content === '!commands') {
         await this.handleHelp(message);
