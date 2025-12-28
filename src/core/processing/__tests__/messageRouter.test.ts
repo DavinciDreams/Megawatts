@@ -84,6 +84,7 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
 
     test('should allow messages in allowed channels', async () => {
       config.allowedChannels = ['allowed-channel-1'];
+      config.respondToMentions = false;
       router.updateConfig(config);
       
       const message = createMockMessage({
@@ -100,6 +101,7 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
 
     test('should allow messages in allowed channel names', async () => {
       config.allowedChannelNames = ['megawatts'];
+      config.respondToMentions = false;
       router.updateConfig(config);
       
       const message = createMockMessage({
@@ -213,6 +215,7 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
   describe('Edge Cases', () => {
     test('should handle DM messages (no channel name)', async () => {
       config.allowedChannelNames = ['megawatts'];
+      config.respondToMentions = false;
       router.updateConfig(config);
       
       const message = createMockMessage({
@@ -224,8 +227,8 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
 
       const result = await router.routeMessage(message, context, intent, safety);
       
-      // Should be allowed since no channel restrictions by ID are set
-      expect(result.handler).not.toBe(HandlerType.IGNORE);
+      // Should be ignored since DM channel has no name and doesn't match allowed channel names
+      expect(result.handler).toBe(HandlerType.IGNORE);
     });
 
     test('should handle missing channel info gracefully', async () => {
