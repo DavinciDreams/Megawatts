@@ -186,9 +186,9 @@ export const DEFAULT_PIPELINE_CONFIG: PipelineConfig = {
   intentConfidenceThreshold: 0.5,
   enableLogging: true,
   // Channel filtering and mention detection defaults
-  allowedChannels: [], // Empty by default, will be configured
-  respondToMentions: true, // Enabled by default
-  allowedChannelNames: [process.env.BOT_RESPONSE_CHANNEL || 'megawatts'] // Use environment variable or fallback to megawatts
+  allowedChannels: [], // Empty array means no channel restrictions
+  respondToMentions: true, // Only respond when bot is mentioned
+  allowedChannelNames: [] // Empty array means no channel name restrictions - rely on mentions only
 };
 
 /**

@@ -1,5 +1,5 @@
 import { Message } from 'discord.js';
-import { Logger } from '../../utils/logger.js';
+import { Logger } from '../../utils/logger';
 import {
   MessageContext,
   RoutingDecision,
@@ -231,18 +231,23 @@ export class MessageRouter {
     }
 
     // Channel filtering and mention detection
-    const isInAllowedChannel = this.isInAllowedChannel(context.channelId, message);
     const hasBotMention = this.hasBotMention(message);
 
-    // If respondToMentions is enabled and bot is mentioned, allow regardless of channel
-    if (this.config.respondToMentions && hasBotMention) {
+    // If respondToMentions is enabled, ONLY respond to mentions
+    if (this.config.respondToMentions) {
+      if (!hasBotMention) {
+        this.logger.debug(`Ignoring message in channel ${context.channelId} - no bot mention (mention-only mode)`);
+        return true;
+      }
+      // Bot is mentioned, allow the message
       this.logger.debug(`Allowing message with bot mention in channel ${context.channelId}`);
       return false;
     }
 
-    // If not in allowed channel and no bot mention, ignore
-    if (!isInAllowedChannel && !hasBotMention) {
-      this.logger.debug(`Ignoring message in channel ${context.channelId} - not in allowed channels and no bot mention`);
+    // If respondToMentions is disabled, check channel restrictions
+    const isInAllowedChannel = this.isInAllowedChannel(context.channelId, message);
+    if (!isInAllowedChannel) {
+      this.logger.debug(`Ignoring message in channel ${context.channelId} - not in allowed channels`);
       return true;
     }
 

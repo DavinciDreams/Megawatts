@@ -84,6 +84,7 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
 
     test('should allow messages in allowed channels', async () => {
       config.allowedChannels = ['allowed-channel-1'];
+      config.respondToMentions = false;
       router.updateConfig(config);
       
       const message = createMockMessage({
@@ -100,6 +101,7 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
 
     test('should allow messages in allowed channel names', async () => {
       config.allowedChannelNames = ['megawatts'];
+      config.respondToMentions = false;
       router.updateConfig(config);
       
       const message = createMockMessage({
@@ -114,19 +116,34 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
       expect(result.handler).not.toBe(HandlerType.IGNORE);
     });
 
-    test('should allow all channels when no restrictions are set', async () => {
+    test('should only respond to mentions when respondToMentions is true', async () => {
       config.allowedChannels = [];
       config.allowedChannelNames = [];
+      config.respondToMentions = true;
       router.updateConfig(config);
       
-      const message = createMockMessage();
+      // Message without mention should be ignored
+      const messageWithoutMention = createMockMessage();
       const context = createMockContext();
       const intent = createMockIntent();
       const safety = createMockSafety();
 
-      const result = await router.routeMessage(message, context, intent, safety);
+      const result = await router.routeMessage(messageWithoutMention, context, intent, safety);
       
-      expect(result.handler).not.toBe(HandlerType.IGNORE);
+      expect(result.handler).toBe(HandlerType.IGNORE);
+      expect(result.shouldRespond).toBe(false);
+      
+      // Message with mention should be allowed
+      const messageWithMention = createMockMessage({
+        mentions: {
+          users: new Map([['bot-456', { id: 'bot-456', username: 'Katbot' }]]),
+          everyone: false
+        }
+      });
+      
+      const resultWithMention = await router.routeMessage(messageWithMention, context, intent, safety);
+      
+      expect(resultWithMention.handler).not.toBe(HandlerType.IGNORE);
     });
   });
 
@@ -198,6 +215,7 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
   describe('Edge Cases', () => {
     test('should handle DM messages (no channel name)', async () => {
       config.allowedChannelNames = ['megawatts'];
+      config.respondToMentions = false;
       router.updateConfig(config);
       
       const message = createMockMessage({
@@ -209,8 +227,8 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
 
       const result = await router.routeMessage(message, context, intent, safety);
       
-      // Should be allowed since no channel restrictions by ID are set
-      expect(result.handler).not.toBe(HandlerType.IGNORE);
+      // Should be ignored since DM channel has no name and doesn't match allowed channel names
+      expect(result.handler).toBe(HandlerType.IGNORE);
     });
 
     test('should handle missing channel info gracefully', async () => {
@@ -235,7 +253,7 @@ describe('MessageRouter - Channel Filtering and Mention Detection', () => {
     test('should use default configuration values', () => {
       expect(DEFAULT_PIPELINE_CONFIG.respondToMentions).toBe(true);
       expect(DEFAULT_PIPELINE_CONFIG.allowedChannels).toEqual([]);
-      expect(DEFAULT_PIPELINE_CONFIG.allowedChannelNames).toEqual([process.env.BOT_RESPONSE_CHANNEL || 'megawatts']);
+      expect(DEFAULT_PIPELINE_CONFIG.allowedChannelNames).toEqual([]);
     });
   });
 });

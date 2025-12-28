@@ -30,7 +30,7 @@ describe('BucketManager', () => {
       await bucketManager.getBucket('test-bucket');
       await bucketManager.deleteBucket('test-bucket');
       const bucket = await store.getBucket('test-bucket');
-      expect(bucket).toBeUndefined();
+      expect(bucket).toBeNull();
     });
 
     it('should reject queued requests when deleting a bucket', async () => {

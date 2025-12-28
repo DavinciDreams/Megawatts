@@ -318,15 +318,20 @@ class SelfEditingDiscordBot {
     const { IntentType, RiskLevel } = require('./core/processing/types');
     const intent = { type: IntentType.HELP, confidence: 1, entities: [] };
     const safety = { isSafe: true, riskLevel: RiskLevel.LOW, violations: [], confidence: 1, requiresAction: false };
+    
+    // Check routing decision BEFORE any processing
     const routing = this.messageRouter.routeMessage
       ? await this.messageRouter.routeMessage(message, context, intent, safety)
       : { handler: 'ignore', shouldRespond: false };
+    
+    // If routing says to ignore or not respond, exit early
     if (routing.handler === 'ignore' || !routing.shouldRespond) {
+      this.logger.debug(`Ignoring message from ${message.author.username} - routing decision: ${routing.handler}`);
       return;
     }
-    // ...existing code...
+    
+    // Only log and process if we should respond
     this.logger.info(`Received message from ${message.author.username}: ${message.content}`);
-    // ...existing code...
     const content = message.content.toLowerCase().trim();
     let intentType: BotIntent;
     if (content.startsWith('!help')) {
