@@ -31,7 +31,7 @@ export class RedisConnectionManager {
     this.logger = new Logger('RedisConnectionManager');
     this.tieredCachingEnabled = config.tieredCachingEnabled ?? false;
     
-    const clientConfig = {
+    const clientConfig: any = {
       socket: {
         host: config.host || 'localhost',
         port: config.port || 6379,
@@ -39,7 +39,6 @@ export class RedisConnectionManager {
         keepAlive: config.keepAlive || 30000,
         family: config.family || 4,
       },
-      password: config.password,
       database: config.database || 0,
       lazyConnect: config.lazyConnect !== false,
       keyPrefix: config.keyPrefix,
@@ -47,6 +46,11 @@ export class RedisConnectionManager {
       maxRetriesPerRequest: config.maxRetriesPerRequest || 3,
       offlineQueue: config.offlineQueue !== false,
     };
+    
+    // Only include password if it's actually provided (non-empty string)
+    if (config.password) {
+      clientConfig.password = config.password;
+    }
 
     this.client = createClient(clientConfig);
     this.setupEventHandlers();
@@ -380,7 +384,7 @@ export class RedisConnectionManager {
 
     try {
       const serializedValue = JSON.stringify(value);
-      const ttl = this.getHotTierTTL(dataType);
+      const ttl = this.getHotTierTTLByDataType(dataType);
       const tierKey = `tier:hot:${key}`;
       
       await this.client.setEx(tierKey, ttl, serializedValue);
@@ -549,7 +553,7 @@ export class RedisConnectionManager {
     }
 
     try {
-      const ttl = this.getHotTierTTL(dataType);
+      const ttl = this.getHotTierTTLByDataType(dataType);
       const pipeline = this.client.multi();
       
       for (const key of keys) {
@@ -576,7 +580,7 @@ export class RedisConnectionManager {
    * @param dataType - Type of data
    * @returns TTL in seconds
    */
-  private getHotTierTTL(dataType: DataType): number {
+  private getHotTierTTLByDataType(dataType: DataType): number {
     switch (dataType) {
       case DataType.USER_PROFILE:
         return 3600; // 1 hour
