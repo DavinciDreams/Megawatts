@@ -1,20 +1,105 @@
 /**
  * Tool Registry
- * 
- * This module implements the tool discovery and registration system
- * for the AI tool calling framework.
+ *
+ * This module implements a comprehensive tool discovery, registration, and execution system
+ * for the AI tool calling framework with caching, dependency management, and monitoring.
  */
 
-import { 
-  Tool, 
-  ToolCategory, 
-  ToolSafety, 
-  ToolParameter, 
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { glob } from 'glob';
+import {
+  Tool,
+  ToolCategory,
+  ToolSafety,
+  ToolParameter,
   ParameterType,
   ToolCall,
-  ToolError
-} from '../../../types/ai';
-import { Logger } from '../../../utils/logger';
+  ToolError,
+  ToolMetadata,
+  ToolExample
+} from '../../types/ai';
+import { Logger, LogLevel } from '../../utils/logger';
+import { BotError } from '../../utils/errors';
+
+// ============================================================================
+// TYPE DEFINITIONS
+// ============================================================================
+
+export interface ToolRegistryConfig {
+  autoRegisterBuiltinTools: boolean;
+  enablePermissions: boolean;
+  enableCategories: boolean;
+  maxTools: number;
+  toolDiscoveryPaths: string[];
+  enableCaching: boolean;
+  cacheTTL: number;
+  enableMonitoring: boolean;
+  enableDependencyManagement: boolean;
+}
+
+export interface ToolExecutorConfig {
+  maxConcurrentExecutions: number;
+  defaultTimeout: number;
+  enableRateLimiting: boolean;
+  enableMonitoring: boolean;
+  sandboxMode: boolean;
+  retryAttempts: number;
+  retryDelay: number;
+}
+
+export interface ToolRegistryStats {
+  totalTools: number;
+  categories: Record<ToolCategory, number>;
+  safetyLevels: {
+    safe: number;
+    restricted: number;
+    dangerous: number;
+  };
+  mostUsedTools: string[];
+  recentlyRegistered: string[];
+  executionStats: Record<string, ToolExecutionStats>;
+}
+
+export interface ToolExecutionStats {
+  totalCalls: number;
+  successfulCalls: number;
+  failedCalls: number;
+  averageExecutionTime: number;
+  recentCalls: number[];
+  lastExecution?: Date;
+  successRate: number;
+}
+
+export interface ToolCacheEntry {
+  tool: Tool;
+  cachedAt: Date;
+  expiresAt: Date;
+  accessCount: number;
+  lastAccessed: Date;
+}
+
+export interface ToolDependencyGraph {
+  nodes: Map<string, Tool>;
+  edges: Map<string, string[]>; // toolName -> [dependentToolNames]
+  reverseEdges: Map<string, string[]>; // toolName -> [dependencyToolNames]
+}
+
+export interface ToolExecutionResult {
+  success: boolean;
+  result?: any;
+  error?: ToolError;
+  executionTime: number;
+  cached: boolean;
+  toolName: string;
+}
+
+export interface ToolDiscoveryResult {
+  discovered: number;
+  registered: number;
+  failed: number;
+  errors: Array<{ tool: string; error: string }>;
+}
 
 // ============================================================================
 // TOOL REGISTRY CLASS
@@ -26,11 +111,139 @@ export class ToolRegistry {
   private permissions: Map<string, string[]> = new Map();
   private logger: Logger;
   private config: ToolRegistryConfig;
+  private cache: Map<string, ToolCacheEntry> = new Map();
+  private executionStats: Map<string, ToolExecutionStats> = new Map();
+  private dependencyGraph: ToolDependencyGraph;
+  private executionHistory: ToolExecutionResult[] = [];
+  private performanceMetrics: Map<string, PerformanceMetrics> = new Map();
+  private rateLimiters: Map<string, RateLimiter> = new Map();
 
   constructor(config: ToolRegistryConfig, logger: Logger) {
     this.logger = logger;
     this.config = config;
+    this.dependencyGraph = {
+      nodes: new Map(),
+      edges: new Map(),
+      reverseEdges: new Map()
+    };
     this.initializeCategories();
+  }
+
+  /**
+   * Initialize tool categories
+   */
+  private initializeCategories(): void {
+    for (const category of Object.values(ToolCategory)) {
+      this.categories.set(category, new Set());
+    }
+  }
+
+  /**
+   * Discover tools from filesystem
+   */
+  async discoverTools(): Promise<ToolDiscoveryResult> {
+    const result: ToolDiscoveryResult = {
+      discovered: 0,
+      registered: 0,
+      failed: 0,
+      errors: []
+    };
+
+    this.logger.info('Starting tool discovery', {
+      paths: this.config.toolDiscoveryPaths
+    });
+
+    for (const discoveryPath of this.config.toolDiscoveryPaths) {
+      try {
+        const fullPath = path.resolve(discoveryPath);
+        const exists = await fs.access(fullPath).then(() => true).catch(() => false);
+
+        if (!exists) {
+          this.logger.warn(`Tool discovery path does not exist: ${fullPath}`);
+          continue;
+        }
+
+        // Find all TypeScript files in the path
+        const pattern = path.join(fullPath, '**/*.ts');
+        const files = await glob(pattern);
+
+        this.logger.debug(`Found ${files.length} files in ${fullPath}`);
+
+        for (const file of files) {
+          try {
+            // Skip test files and type definition files
+            if (file.includes('.test.') || file.includes('.spec.') || file.endsWith('.d.ts')) {
+              continue;
+            }
+
+            const tool = await this.loadToolFromFile(file);
+            if (tool) {
+              result.discovered++;
+              try {
+                this.registerTool(tool);
+                result.registered++;
+              } catch (error) {
+                result.failed++;
+                result.errors.push({
+                  tool: tool.name,
+                  error: (error as Error).message
+                });
+              }
+            }
+          } catch (error) {
+            this.logger.error(`Failed to load tool from file: ${file}`, error as Error);
+          }
+        }
+      } catch (error) {
+        this.logger.error(`Tool discovery failed for path: ${discoveryPath}`, error as Error);
+      }
+    }
+
+    this.logger.info('Tool discovery completed', {
+      discovered: result.discovered,
+      registered: result.registered,
+      failed: result.failed
+    });
+
+    return result;
+  }
+
+  /**
+   * Load a tool from a file
+   */
+  private async loadToolFromFile(filePath: string): Promise<Tool | null> {
+    try {
+      // Clear require cache for dynamic imports
+      delete require.cache[require.resolve(filePath)];
+
+      // Dynamic import of the module
+      const module = await import(filePath);
+
+      // Look for exported tools
+      const potentialTools = Object.values(module).filter(
+        (item): item is Tool => {
+          return (
+            item &&
+            typeof item === 'object' &&
+            'name' in item &&
+            'description' in item &&
+            'parameters' in item &&
+            'category' in item &&
+            'safety' in item
+          );
+        }
+      );
+
+      if (potentialTools.length === 0) {
+        return null;
+      }
+
+      // Return the first valid tool found
+      return potentialTools[0];
+    } catch (error) {
+      this.logger.error(`Failed to load tool from file: ${filePath}`, error as Error);
+      return null;
+    }
   }
 
   /**
@@ -43,10 +256,28 @@ export class ToolRegistry {
 
       // Check if tool already exists
       if (this.tools.has(tool.name)) {
-        throw new Error(`Tool '${tool.name}' is already registered`);
+        throw new BotError(
+          `Tool '${tool.name}' is already registered`,
+          'medium',
+          { toolName: tool.name }
+        );
       }
 
-      // Register the tool
+      // Check tool limit
+      if (this.tools.size >= this.config.maxTools) {
+        throw new BotError(
+          `Maximum tool limit (${this.config.maxTools}) reached`,
+          'high',
+          { currentTools: this.tools.size, maxTools: this.config.maxTools }
+        );
+      }
+
+      // Validate dependencies
+      if (this.config.enableDependencyManagement && tool.metadata.dependencies) {
+        this.validateDependencies(tool);
+      }
+
+      // Register tool
       this.tools.set(tool.name, tool);
 
       // Add to category
@@ -58,14 +289,52 @@ export class ToolRegistry {
       // Store permissions
       this.permissions.set(tool.name, tool.permissions);
 
+      // Build dependency graph
+      this.addToDependencyGraph(tool);
+
+      // Initialize execution stats
+      this.executionStats.set(tool.name, {
+        totalCalls: 0,
+        successfulCalls: 0,
+        failedCalls: 0,
+        averageExecutionTime: 0,
+        recentCalls: [],
+        successRate: 1.0
+      });
+
+      // Initialize rate limiter if rate limiting is enabled
+      if (this.config.enableRateLimiting && tool.safety.rateLimit) {
+        this.rateLimiters.set(
+          tool.name,
+          new RateLimiter(tool.safety.rateLimit.requestsPerMinute, 60000)
+        );
+      }
+
+      // Initialize performance metrics
+      this.performanceMetrics.set(tool.name, {
+        p50: 0,
+        p95: 0,
+        p99: 0,
+        min: Infinity,
+        max: 0,
+        samples: []
+      });
+
+      // Cache tool if caching is enabled
+      if (this.config.enableCaching) {
+        this.cacheTool(tool);
+      }
+
       this.logger.info('Tool registered successfully', {
         tool: tool.name,
         category: tool.category,
-        safety: tool.safety.level
+        safety: tool.safety.level,
+        version: tool.metadata.version
       });
-
     } catch (error) {
-      this.logger.error('Failed to register tool', error as Error);
+      this.logger.error('Failed to register tool', error as Error, {
+        tool: tool.name
+      });
       throw error;
     }
   }
@@ -95,14 +364,30 @@ export class ToolRegistry {
       // Remove permissions
       this.permissions.delete(toolName);
 
+      // Remove from dependency graph
+      this.removeFromDependencyGraph(toolName);
+
+      // Remove from cache
+      this.cache.delete(toolName);
+
+      // Remove execution stats
+      this.executionStats.delete(toolName);
+
+      // Remove performance metrics
+      this.performanceMetrics.delete(toolName);
+
+      // Remove rate limiter
+      this.rateLimiters.delete(toolName);
+
       this.logger.info('Tool unregistered successfully', {
         tool: toolName
       });
 
       return true;
-
     } catch (error) {
-      this.logger.error('Failed to unregister tool', error as Error);
+      this.logger.error('Failed to unregister tool', error as Error, {
+        tool: toolName
+      });
       return false;
     }
   }
@@ -111,6 +396,16 @@ export class ToolRegistry {
    * Get a tool by name
    */
   getTool(toolName: string): Tool | undefined {
+    // Check cache first
+    if (this.config.enableCaching) {
+      const cached = this.cache.get(toolName);
+      if (cached && !this.isCacheEntryExpired(cached)) {
+        cached.accessCount++;
+        cached.lastAccessed = new Date();
+        return cached.tool;
+      }
+    }
+
     return this.tools.get(toolName);
   }
 
@@ -183,6 +478,10 @@ export class ToolRegistry {
    * Check if user has permission for tool
    */
   hasPermission(toolName: string, userPermissions: string[]): boolean {
+    if (!this.config.enablePermissions) {
+      return true;
+    }
+
     const toolPerms = this.permissions.get(toolName);
     if (!toolPerms) {
       return false;
@@ -198,14 +497,15 @@ export class ToolRegistry {
   getStatistics(): ToolRegistryStats {
     const stats: ToolRegistryStats = {
       totalTools: this.tools.size,
-      categories: {},
+      categories: {} as Record<ToolCategory, number>,
       safetyLevels: {
         safe: 0,
         restricted: 0,
         dangerous: 0
       },
       mostUsedTools: [],
-      recentlyRegistered: []
+      recentlyRegistered: [],
+      executionStats: {}
     };
 
     // Count by category
@@ -218,7 +518,65 @@ export class ToolRegistry {
       stats.safetyLevels[tool.safety.level]++;
     }
 
+    // Get most used tools
+    const sortedByUsage = Array.from(this.executionStats.entries())
+      .sort((a, b) => b[1].totalCalls - a[1].totalCalls)
+      .slice(0, 10);
+
+    stats.mostUsedTools = sortedByUsage.map(([name]) => name);
+    stats.executionStats = Object.fromEntries(sortedByUsage);
+
     return stats;
+  }
+
+  /**
+   * Get execution statistics for a specific tool
+   */
+  getToolExecutionStats(toolName: string): ToolExecutionStats | undefined {
+    return this.executionStats.get(toolName);
+  }
+
+  /**
+   * Get performance metrics for a specific tool
+   */
+  getToolPerformanceMetrics(toolName: string): PerformanceMetrics | undefined {
+    return this.performanceMetrics.get(toolName);
+  }
+
+  /**
+   * Get execution history
+   */
+  getExecutionHistory(limit?: number): ToolExecutionResult[] {
+    if (limit) {
+      return this.executionHistory.slice(-limit);
+    }
+    return [...this.executionHistory];
+  }
+
+  /**
+   * Clear execution history
+   */
+  clearExecutionHistory(): void {
+    this.executionHistory = [];
+    this.logger.info('Execution history cleared');
+  }
+
+  /**
+   * Get tool dependencies
+   */
+  getToolDependencies(toolName: string): string[] {
+    const tool = this.tools.get(toolName);
+    if (!tool || !tool.metadata.dependencies) {
+      return [];
+    }
+    return tool.metadata.dependencies;
+  }
+
+  /**
+   * Get tools that depend on a specific tool
+   */
+  getDependentTools(toolName: string): string[] {
+    return this.dependencyGraph.edges.get(toolName) || [];
   }
 
   /**
@@ -226,23 +584,27 @@ export class ToolRegistry {
    */
   private validateTool(tool: Tool): void {
     if (!tool.name || typeof tool.name !== 'string') {
-      throw new Error('Tool must have a valid name');
+      throw new ValidationError('Tool must have a valid name', 'name');
     }
 
     if (!tool.description || typeof tool.description !== 'string') {
-      throw new Error('Tool must have a valid description');
+      throw new ValidationError('Tool must have a valid description', 'description');
     }
 
     if (!Array.isArray(tool.parameters)) {
-      throw new Error('Tool must have parameters array');
+      throw new ValidationError('Tool must have parameters array', 'parameters');
     }
 
     if (!tool.category || !Object.values(ToolCategory).includes(tool.category)) {
-      throw new Error('Tool must have a valid category');
+      throw new ValidationError('Tool must have a valid category', 'category');
     }
 
     if (!tool.safety || !tool.safety.level) {
-      throw new Error('Tool must have safety configuration');
+      throw new ValidationError('Tool must have safety configuration', 'safety');
+    }
+
+    if (!tool.metadata || !tool.metadata.version) {
+      throw new ValidationError('Tool must have metadata with version', 'metadata');
     }
 
     // Validate parameters
@@ -256,19 +618,19 @@ export class ToolRegistry {
    */
   private validateParameter(param: ToolParameter): void {
     if (!param.name || typeof param.name !== 'string') {
-      throw new Error('Parameter must have a valid name');
+      throw new ValidationError('Parameter must have a valid name', 'name');
     }
 
     if (!Object.values(ParameterType).includes(param.type)) {
-      throw new Error(`Invalid parameter type: ${param.type}`);
+      throw new ValidationError(`Invalid parameter type: ${param.type}`, 'type');
     }
 
     if (typeof param.required !== 'boolean') {
-      throw new Error('Parameter must specify if it is required');
+      throw new ValidationError('Parameter must specify if it is required', 'required');
     }
 
     if (!param.description || typeof param.description !== 'string') {
-      throw new Error('Parameter must have a valid description');
+      throw new ValidationError('Parameter must have a valid description', 'description');
     }
 
     // Validate validation rules
@@ -282,407 +644,363 @@ export class ToolRegistry {
    */
   private validateParameterValidation(validation: any, type: ParameterType): void {
     if (type === 'string' && validation.pattern && typeof validation.pattern !== 'string') {
-      throw new Error('String parameter validation must have a valid pattern');
+      throw new ValidationError('String parameter validation must have a valid pattern', 'validation.pattern');
     }
 
     if (type === 'number') {
       if (validation.min !== undefined && typeof validation.min !== 'number') {
-        throw new Error('Number parameter validation min must be a number');
+        throw new ValidationError('Number parameter validation min must be a number', 'validation.min');
       }
       if (validation.max !== undefined && typeof validation.max !== 'number') {
-        throw new Error('Number parameter validation max must be a number');
+        throw new ValidationError('Number parameter validation max must be a number', 'validation.max');
       }
     }
 
     if (type === 'string' || type === 'array') {
       if (validation.minLength !== undefined && typeof validation.minLength !== 'number') {
-        throw new Error('Parameter validation minLength must be a number');
+        throw new ValidationError('Parameter validation minLength must be a number', 'validation.minLength');
       }
       if (validation.maxLength !== undefined && typeof validation.maxLength !== 'number') {
-        throw new Error('Parameter validation maxLength must be a number');
+        throw new ValidationError('Parameter validation maxLength must be a number', 'validation.maxLength');
       }
     }
   }
 
   /**
-   * Initialize tool categories
+   * Validate tool dependencies
    */
-  private initializeCategories(): void {
-    for (const category of Object.values(ToolCategory)) {
-      this.categories.set(category, new Set());
-    }
-  }
-}
-
-// ============================================================================
-// TOOL EXECUTOR CLASS
-// ============================================================================
-
-export class ToolExecutor {
-  private registry: ToolRegistry;
-  private logger: Logger;
-  private config: ToolExecutorConfig;
-  private executionStats: Map<string, ToolExecutionStats> = new Map();
-
-  constructor(
-    registry: ToolRegistry, 
-    config: ToolExecutorConfig, 
-    logger: Logger
-  ) {
-    this.registry = registry;
-    this.config = config;
-    this.logger = logger;
-  }
-
-  /**
-   * Execute a tool call
-   */
-  async executeTool(toolCall: ToolCall, userPermissions: string[]): Promise<ToolCall> {
-    const startTime = Date.now();
-    
-    try {
-      // Get tool
-      const tool = this.registry.getTool(toolCall.name);
-      if (!tool) {
-        throw new Error(`Tool '${toolCall.name}' not found`);
-      }
-
-      // Check permissions
-      if (!this.registry.hasPermission(toolCall.name, userPermissions)) {
-        throw new Error(`Insufficient permissions for tool '${toolCall.name}'`);
-      }
-
-      // Validate parameters
-      this.validateParameters(toolCall.arguments, tool.parameters);
-
-      // Check rate limits
-      await this.checkRateLimit(toolCall.name, userPermissions);
-
-      // Update status to executing
-      toolCall.status = 'executing';
-
-      this.logger.info('Executing tool', {
-        tool: toolCall.name,
-        arguments: toolCall.arguments
-      });
-
-      // Execute tool (this would be implemented by actual tool handlers)
-      const result = await this.executeToolHandler(tool, toolCall.arguments);
-
-      // Update tool call with result
-      toolCall.result = result;
-      toolCall.status = 'completed';
-      toolCall.executionTime = Date.now() - startTime;
-
-      // Update statistics
-      this.updateExecutionStats(toolCall.name, true, toolCall.executionTime);
-
-      this.logger.info('Tool execution completed', {
-        tool: toolCall.name,
-        executionTime: toolCall.executionTime
-      });
-
-      return toolCall;
-
-    } catch (error) {
-      // Update tool call with error
-      toolCall.error = {
-        code: 'EXECUTION_ERROR',
-        message: (error as Error).message,
-        retryable: this.isRetryableError(error as Error)
-      };
-      toolCall.status = 'failed';
-      toolCall.executionTime = Date.now() - startTime;
-
-      // Update statistics
-      this.updateExecutionStats(toolCall.name, false, toolCall.executionTime);
-
-      this.logger.error('Tool execution failed', error as Error, {
-        tool: toolCall.name,
-        arguments: toolCall.arguments
-      });
-
-      return toolCall;
-    }
-  }
-
-  /**
-   * Execute multiple tool calls in parallel
-   */
-  async executeTools(
-    toolCalls: ToolCall[], 
-    userPermissions: string[]
-  ): Promise<ToolCall[]> {
-    // Execute tools in parallel with concurrency limit
-    const concurrencyLimit = this.config.maxConcurrentExecutions || 5;
-    const results: ToolCall[] = [];
-
-    for (let i = 0; i < toolCalls.length; i += concurrencyLimit) {
-      const batch = toolCalls.slice(i, i + concurrencyLimit);
-      const batchResults = await Promise.all(
-        batch.map(call => this.executeTool(call, userPermissions))
-      );
-      results.push(...batchResults);
-    }
-
-    return results;
-  }
-
-  /**
-   * Get execution statistics
-   */
-  getExecutionStats(): Map<string, ToolExecutionStats> {
-    return new Map(this.executionStats);
-  }
-
-  /**
-   * Reset execution statistics
-   */
-  resetExecutionStats(): void {
-    this.executionStats.clear();
-  }
-
-  /**
-   * Validate tool call parameters
-   */
-  private validateParameters(
-    arguments: Record<string, any>, 
-    parameters: ToolParameter[]
-  ): void {
-    for (const param of parameters) {
-      const value = arguments[param.name];
-      const hasValue = value !== undefined && value !== null;
-
-      // Check required parameters
-      if (param.required && !hasValue) {
-        throw new Error(`Required parameter '${param.name}' is missing`);
-      }
-
-      // Skip validation for optional parameters without value
-      if (!param.required && !hasValue) {
-        continue;
-      }
-
-      // Type validation
-      this.validateParameterType(value, param);
-
-      // Validation rules
-      if (param.validation) {
-        this.validateParameterValue(value, param);
-      }
-    }
-  }
-
-  /**
-   * Validate parameter type
-   */
-  private validateParameterType(value: any, param: ToolParameter): void {
-    switch (param.type) {
-      case 'string':
-        if (typeof value !== 'string') {
-          throw new Error(`Parameter '${param.name}' must be a string`);
-        }
-        break;
-      case 'number':
-        if (typeof value !== 'number') {
-          throw new Error(`Parameter '${param.name}' must be a number`);
-        }
-        break;
-      case 'boolean':
-        if (typeof value !== 'boolean') {
-          throw new Error(`Parameter '${param.name}' must be a boolean`);
-        }
-        break;
-      case 'array':
-        if (!Array.isArray(value)) {
-          throw new Error(`Parameter '${param.name}' must be an array`);
-        }
-        break;
-      case 'object':
-        if (typeof value !== 'object' || Array.isArray(value)) {
-          throw new Error(`Parameter '${param.name}' must be an object`);
-        }
-        break;
-    }
-  }
-
-  /**
-   * Validate parameter value against rules
-   */
-  private validateParameterValue(value: any, param: ToolParameter): void {
-    const validation = param.validation!;
-    
-    if (validation.pattern && typeof value === 'string') {
-      const regex = new RegExp(validation.pattern);
-      if (!regex.test(value)) {
-        throw new Error(`Parameter '${param.name}' does not match required pattern`);
-      }
-    }
-
-    if (validation.min !== undefined && typeof value === 'number') {
-      if (value < validation.min) {
-        throw new Error(`Parameter '${param.name}' must be at least ${validation.min}`);
-      }
-    }
-
-    if (validation.max !== undefined && typeof value === 'number') {
-      if (value > validation.max) {
-        throw new Error(`Parameter '${param.name}' must be at most ${validation.max}`);
-      }
-    }
-
-    if (validation.minLength !== undefined && (typeof value === 'string' || Array.isArray(value))) {
-      if (value.length < validation.minLength) {
-        throw new Error(`Parameter '${param.name}' must have at least ${validation.minLength} characters/items`);
-      }
-    }
-
-    if (validation.maxLength !== undefined && (typeof value === 'string' || Array.isArray(value))) {
-      if (value.length > validation.maxLength) {
-        throw new Error(`Parameter '${param.name}' must have at most ${validation.maxLength} characters/items`);
-      }
-    }
-
-    if (validation.enum && !validation.enum.includes(value)) {
-      throw new Error(`Parameter '${param.name}' must be one of: ${validation.enum.join(', ')}`);
-    }
-  }
-
-  /**
-   * Check rate limits
-   */
-  private async checkRateLimit(toolName: string, userPermissions: string[]): Promise<void> {
-    const tool = this.registry.getTool(toolName);
-    if (!tool?.safety.rateLimit) {
+  private validateDependencies(tool: Tool): void {
+    if (!tool.metadata.dependencies) {
       return;
     }
 
-    const rateLimit = tool.safety.rateLimit;
-    const stats = this.executionStats.get(toolName);
-    
-    if (stats) {
-      const now = Date.now();
-      const windowStart = now - 60000; // 1 minute window
-      
-      const recentCalls = stats.recentCalls.filter(time => time > windowStart);
-      
-      if (recentCalls.length >= rateLimit.requestsPerMinute) {
-        throw new Error(`Rate limit exceeded for tool '${toolName}'`);
+    for (const dep of tool.metadata.dependencies) {
+      if (!this.tools.has(dep)) {
+        throw new BotError(
+          `Tool '${tool.name}' depends on '${dep}' which is not registered`,
+          'medium',
+          { tool: tool.name, dependency: dep }
+        );
+      }
+
+      // Check for circular dependencies
+      if (this.hasCircularDependency(tool.name, dep)) {
+        throw new BotError(
+          `Circular dependency detected between '${tool.name}' and '${dep}'`,
+          'high',
+          { tool: tool.name, dependency: dep }
+        );
       }
     }
   }
 
   /**
-   * Execute tool handler (placeholder for actual implementation)
+   * Check for circular dependencies
    */
-  private async executeToolHandler(
-    tool: Tool, 
-    arguments: Record<string, any>
-  ): Promise<any> {
-    // This would be implemented by actual tool handlers
-    // For now, return a placeholder result
-    return {
-      tool: tool.name,
-      arguments,
-      executed: true,
-      timestamp: new Date()
-    };
+  private hasCircularDependency(toolName: string, dependencyName: string): boolean {
+    const visited = new Set<string>();
+    return this.checkCircular(dependencyName, toolName, visited);
+  }
+
+  private checkCircular(
+    current: string,
+    target: string,
+    visited: Set<string>
+  ): boolean {
+    if (current === target) {
+      return true;
+    }
+
+    if (visited.has(current)) {
+      return false;
+    }
+
+    visited.add(current);
+
+    const dependencies = this.getToolDependencies(current);
+    for (const dep of dependencies) {
+      if (this.checkCircular(dep, target, visited)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
-   * Check if error is retryable
+   * Add tool to dependency graph
    */
-  private isRetryableError(error: Error): boolean {
-    const retryableCodes = [
-      'TIMEOUT',
-      'NETWORK_ERROR',
-      'RATE_LIMIT',
-      'TEMPORARY_FAILURE'
-    ];
-    
-    return retryableCodes.some(code => 
-      error.message.includes(code) || 
-      (error as any).code === code
-    );
+  private addToDependencyGraph(tool: Tool): void {
+    this.dependencyGraph.nodes.set(tool.name, tool);
+
+    if (tool.metadata.dependencies) {
+      for (const dep of tool.metadata.dependencies) {
+        if (!this.dependencyGraph.edges.has(dep)) {
+          this.dependencyGraph.edges.set(dep, []);
+        }
+        this.dependencyGraph.edges.get(dep)!.push(tool.name);
+
+        if (!this.dependencyGraph.reverseEdges.has(tool.name)) {
+          this.dependencyGraph.reverseEdges.set(tool.name, []);
+        }
+        this.dependencyGraph.reverseEdges.get(tool.name)!.push(dep);
+      }
+    }
+  }
+
+  /**
+   * Remove tool from dependency graph
+   */
+  private removeFromDependencyGraph(toolName: string): void {
+    this.dependencyGraph.nodes.delete(toolName);
+
+    // Remove edges
+    for (const [node, dependents] of this.dependencyGraph.edges) {
+      const index = dependents.indexOf(toolName);
+      if (index !== -1) {
+        dependents.splice(index, 1);
+      }
+    }
+
+    this.dependencyGraph.edges.delete(toolName);
+    this.dependencyGraph.reverseEdges.delete(toolName);
+  }
+
+  /**
+   * Cache a tool
+   */
+  private cacheTool(tool: Tool): void {
+    const entry: ToolCacheEntry = {
+      tool,
+      cachedAt: new Date(),
+      expiresAt: new Date(Date.now() + this.config.cacheTTL),
+      accessCount: 0,
+      lastAccessed: new Date()
+    };
+
+    this.cache.set(tool.name, entry);
+  }
+
+  /**
+   * Check if cache entry is expired
+   */
+  private isCacheEntryExpired(entry: ToolCacheEntry): boolean {
+    return new Date() > entry.expiresAt;
+  }
+
+  /**
+   * Clear expired cache entries
+   */
+  clearExpiredCache(): number {
+    let cleared = 0;
+    for (const [key, entry] of this.cache) {
+      if (this.isCacheEntryExpired(entry)) {
+        this.cache.delete(key);
+        cleared++;
+      }
+    }
+
+    if (cleared > 0) {
+      this.logger.debug(`Cleared ${cleared} expired cache entries`);
+    }
+
+    return cleared;
+  }
+
+  /**
+   * Clear all cache
+   */
+  clearCache(): void {
+    const size = this.cache.size;
+    this.cache.clear();
+    this.logger.info(`Cleared ${size} cache entries`);
   }
 
   /**
    * Update execution statistics
    */
-  private updateExecutionStats(
-    toolName: string, 
-    success: boolean, 
-    executionTime?: number
+  updateExecutionStats(
+    toolName: string,
+    success: boolean,
+    executionTime: number
   ): void {
     const now = Date.now();
     let stats = this.executionStats.get(toolName);
-    
+
     if (!stats) {
       stats = {
         totalCalls: 0,
         successfulCalls: 0,
         failedCalls: 0,
         averageExecutionTime: 0,
-        recentCalls: []
+        recentCalls: [],
+        successRate: 1.0
       };
       this.executionStats.set(toolName, stats);
     }
-    
+
     stats.totalCalls++;
     stats.recentCalls.push(now);
-    
+    stats.lastExecution = new Date(now);
+
     if (success) {
       stats.successfulCalls++;
     } else {
       stats.failedCalls++;
     }
-    
-    if (executionTime) {
-      stats.averageExecutionTime = 
-        (stats.averageExecutionTime * (stats.totalCalls - 1) + executionTime) / stats.totalCalls;
-    }
-    
+
+    // Update average execution time
+    stats.averageExecutionTime =
+      (stats.averageExecutionTime * (stats.totalCalls - 1) + executionTime) /
+      stats.totalCalls;
+
+    // Update success rate
+    stats.successRate = stats.successfulCalls / stats.totalCalls;
+
     // Keep only recent calls (last hour)
     const oneHourAgo = now - 3600000;
     stats.recentCalls = stats.recentCalls.filter(time => time > oneHourAgo);
+
+    // Update performance metrics
+    this.updatePerformanceMetrics(toolName, executionTime);
+  }
+
+  /**
+   * Update performance metrics
+   */
+  private updatePerformanceMetrics(toolName: string, executionTime: number): void {
+    let metrics = this.performanceMetrics.get(toolName);
+
+    if (!metrics) {
+      metrics = {
+        p50: 0,
+        p95: 0,
+        p99: 0,
+        min: Infinity,
+        max: 0,
+        samples: []
+      };
+      this.performanceMetrics.set(toolName, metrics);
+    }
+
+    metrics.samples.push(executionTime);
+    metrics.min = Math.min(metrics.min, executionTime);
+    metrics.max = Math.max(metrics.max, executionTime);
+
+    // Keep only last 1000 samples
+    if (metrics.samples.length > 1000) {
+      metrics.samples.shift();
+    }
+
+    // Calculate percentiles
+    const sorted = [...metrics.samples].sort((a, b) => a - b);
+    const len = sorted.length;
+
+    metrics.p50 = sorted[Math.floor(len * 0.5)] || 0;
+    metrics.p95 = sorted[Math.floor(len * 0.95)] || 0;
+    metrics.p99 = sorted[Math.floor(len * 0.99)] || 0;
+  }
+
+  /**
+   * Record execution result in history
+   */
+  recordExecutionResult(result: ToolExecutionResult): void {
+    this.executionHistory.push(result);
+
+    // Keep only last 10000 executions
+    if (this.executionHistory.length > 10000) {
+      this.executionHistory.shift();
+    }
+  }
+
+  /**
+   * Check rate limit for a tool
+   */
+  async checkRateLimit(toolName: string): Promise<void> {
+    if (!this.config.enableRateLimiting) {
+      return;
+    }
+
+    const rateLimiter = this.rateLimiters.get(toolName);
+    if (!rateLimiter) {
+      return;
+    }
+
+    const canExecute = await rateLimiter.acquire();
+    if (!canExecute) {
+      throw new BotError(
+        `Rate limit exceeded for tool '${toolName}'`,
+        'medium',
+        { tool: toolName }
+      );
+    }
+  }
+
+  /**
+   * Reset rate limiters
+   */
+  resetRateLimiters(): void {
+    for (const [toolName, limiter] of this.rateLimiters) {
+      limiter.reset();
+      this.logger.debug(`Reset rate limiter for tool: ${toolName}`);
+    }
   }
 }
 
 // ============================================================================
-// SUPPORTING INTERFACES
+// SUPPORTING CLASSES
 // ============================================================================
 
-export interface ToolRegistryConfig {
-  autoRegisterBuiltinTools: boolean;
-  enablePermissions: boolean;
-  enableCategories: boolean;
-  maxTools: number;
+export class ValidationError extends Error {
+  constructor(message: string, public field?: string) {
+    super(message);
+    this.name = 'ValidationError';
+  }
 }
 
-export interface ToolExecutorConfig {
-  maxConcurrentExecutions: number;
-  defaultTimeout: number;
-  enableRateLimiting: boolean;
-  enableMonitoring: boolean;
-  sandboxMode: boolean;
+class RateLimiter {
+  private requests: number[] = [];
+  private windowMs: number;
+  private maxRequests: number;
+
+  constructor(maxRequests: number, windowMs: number) {
+    this.maxRequests = maxRequests;
+    this.windowMs = windowMs;
+  }
+
+  async acquire(): Promise<boolean> {
+    const now = Date.now();
+    const windowStart = now - this.windowMs;
+
+    // Remove old requests
+    this.requests = this.requests.filter(time => time > windowStart);
+
+    // Check if we can make a request
+    if (this.requests.length >= this.maxRequests) {
+      return false;
+    }
+
+    this.requests.push(now);
+    return true;
+  }
+
+  reset(): void {
+    this.requests = [];
+  }
+
+  getRemaining(): number {
+    const now = Date.now();
+    const windowStart = now - this.windowMs;
+    this.requests = this.requests.filter(time => time > windowStart);
+    return Math.max(0, this.maxRequests - this.requests.length);
+  }
 }
 
-export interface ToolRegistryStats {
-  totalTools: number;
-  categories: Record<ToolCategory, number>;
-  safetyLevels: {
-    safe: number;
-    restricted: number;
-    dangerous: number;
-  };
-  mostUsedTools: string[];
-  recentlyRegistered: string[];
-}
-
-export interface ToolExecutionStats {
-  totalCalls: number;
-  successfulCalls: number;
-  failedCalls: number;
-  averageExecutionTime: number;
-  recentCalls: number[];
+interface PerformanceMetrics {
+  p50: number;
+  p95: number;
+  p99: number;
+  min: number;
+  max: number;
+  samples: number[];
 }

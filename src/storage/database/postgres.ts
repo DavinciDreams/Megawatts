@@ -1,12 +1,14 @@
 import { Pool, PoolClient, PoolConfig, QueryResult } from 'pg';
 import { Logger } from '../../utils/logger';
 import { DatabaseError, DatabaseErrorCode } from '../errors';
+import { StorageTier, DataType } from '../tiered/tieredStorage';
 
 export interface PostgresConfig extends PoolConfig {
   maxConnections?: number;
   idleTimeoutMillis?: number;
   connectionTimeoutMillis?: number;
   healthCheckInterval?: number;
+  tieredStorageEnabled?: boolean;
 }
 
 export class PostgresConnectionManager {
@@ -14,9 +16,11 @@ export class PostgresConnectionManager {
   private logger: Logger;
   private healthCheckTimer?: ReturnType<typeof setInterval>;
   private isConnected = false;
+  private tieredStorageEnabled: boolean;
 
   constructor(private config: PostgresConfig) {
     this.logger = new Logger('PostgresConnectionManager');
+    this.tieredStorageEnabled = config.tieredStorageEnabled ?? false;
     
     // Set default pool configuration
     const poolConfig: PoolConfig = {
@@ -149,5 +153,336 @@ export class PostgresConnectionManager {
       waitingCount: this.pool.waitingCount,
       isConnected: this.isConnected,
     };
+  }
+
+  /**
+   * Executes a tier-specific query for hot tier data
+   * @param key - Data key
+   * @returns Query result with value
+   */
+  async queryHotTier<T = any>(key: string): Promise<T | null> {
+    const result = await this.query<T>(
+      'SELECT value FROM tiered_storage_warm WHERE id = $1',
+      [key]
+    );
+    return result.rows.length > 0 ? result.rows[0] : null;
+  }
+
+  /**
+   * Executes a tier-specific query for warm tier data
+   * @param key - Data key
+   * @returns Query result with value
+   */
+  async queryWarmTier<T = any>(key: string): Promise<T | null> {
+    const result = await this.query<T>(
+      'SELECT value FROM tiered_storage_warm WHERE id = $1',
+      [key]
+    );
+    return result.rows.length > 0 ? result.rows[0] : null;
+  }
+
+  /**
+   * Executes a tier-specific query for cold tier data
+   * @param key - Data key
+   * @returns Query result with value and compression flag
+   */
+  async queryColdTier<T = any>(key: string): Promise<{ value: T; compressed: boolean } | null> {
+    const result = await this.query(
+      'SELECT value, compressed FROM tiered_storage_cold WHERE id = $1',
+      [key]
+    );
+    return result.rows.length > 0 ? result.rows[0] : null;
+  }
+
+  /**
+   * Executes a tier-specific query for backup tier data
+   * @param key - Data key
+   * @returns Query result with value
+   */
+  async queryBackupTier<T = any>(key: string): Promise<T | null> {
+    const result = await this.query<T>(
+      'SELECT value FROM tiered_storage_backup WHERE id = $1',
+      [key]
+    );
+    return result.rows.length > 0 ? result.rows[0] : null;
+  }
+
+  /**
+   * Stores data in warm tier
+   * @param key - Data key
+   * @param value - Data value to store
+   */
+  async storeWarmTier(key: string, value: any): Promise<void> {
+    const serializedValue = JSON.stringify(value);
+    await this.query(
+      `INSERT INTO tiered_storage_warm (id, value, created_at, updated_at)
+       VALUES ($1, $2, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET value = $2, updated_at = NOW()`,
+      [key, serializedValue]
+    );
+  }
+
+  /**
+   * Stores data in cold tier with optional compression
+   * @param key - Data key
+   * @param value - Data value to store
+   * @param compress - Whether to compress the data
+   */
+  async storeColdTier(key: string, value: any, compress: boolean = true): Promise<void> {
+    const serializedValue = JSON.stringify(value);
+    const compressedValue = compress ? this.compressData(serializedValue) : serializedValue;
+    
+    await this.query(
+      `INSERT INTO tiered_storage_cold (id, value, compressed, created_at, updated_at)
+       VALUES ($1, $2, $3, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET value = $2, compressed = $3, updated_at = NOW()`,
+      [key, compressedValue, compress]
+    );
+  }
+
+  /**
+   * Stores data in backup tier
+   * @param key - Data key
+   * @param value - Data value to store
+   */
+  async storeBackupTier(key: string, value: any): Promise<void> {
+    const serializedValue = JSON.stringify(value);
+    await this.query(
+      `INSERT INTO tiered_storage_backup (id, value, created_at, updated_at)
+       VALUES ($1, $2, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET value = $2, updated_at = NOW()`,
+      [key, serializedValue]
+    );
+  }
+
+  /**
+   * Deletes data from warm tier
+   * @param key - Data key
+   */
+  async deleteWarmTier(key: string): Promise<void> {
+    await this.query('DELETE FROM tiered_storage_warm WHERE id = $1', [key]);
+  }
+
+  /**
+   * Deletes data from cold tier
+   * @param key - Data key
+   */
+  async deleteColdTier(key: string): Promise<void> {
+    await this.query('DELETE FROM tiered_storage_cold WHERE id = $1', [key]);
+  }
+
+  /**
+   * Deletes data from backup tier
+   * @param key - Data key
+   */
+  async deleteBackupTier(key: string): Promise<void> {
+    await this.query('DELETE FROM tiered_storage_backup WHERE id = $1', [key]);
+  }
+
+  /**
+   * Gets metadata for tiered storage
+   * @param key - Data key
+   * @returns Metadata or null if not found
+   */
+  async getTieredMetadata(key: string): Promise<{
+    id: string;
+    dataType: DataType;
+    currentTier: StorageTier;
+    createdAt: Date;
+    lastAccessedAt: Date;
+    accessCount: number;
+    size: number;
+    tags: string[];
+    expiresAt?: Date;
+  } | null> {
+    const result = await this.query(
+      'SELECT * FROM tiered_storage_metadata WHERE id = $1',
+      [key]
+    );
+    
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    const row = result.rows[0];
+    return {
+      id: row.id,
+      dataType: row.data_type as DataType,
+      currentTier: row.current_tier as StorageTier,
+      createdAt: row.created_at,
+      lastAccessedAt: row.last_accessed_at,
+      accessCount: row.access_count,
+      size: row.size,
+      tags: row.tags,
+      expiresAt: row.expires_at
+    };
+  }
+
+  /**
+   * Updates tiered storage metadata
+   * @param key - Data key
+   * @param updates - Metadata updates
+   */
+  async updateTieredMetadata(
+    key: string,
+    updates: {
+      currentTier?: StorageTier;
+      lastAccessedAt?: Date;
+      accessCount?: number;
+      size?: number;
+      tags?: string[];
+      expiresAt?: Date;
+    }
+  ): Promise<void> {
+    const setClause: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    if (updates.currentTier !== undefined) {
+      setClause.push(`current_tier = $${paramIndex++}`);
+      values.push(updates.currentTier);
+    }
+    if (updates.lastAccessedAt !== undefined) {
+      setClause.push(`last_accessed_at = $${paramIndex++}`);
+      values.push(updates.lastAccessedAt);
+    }
+    if (updates.accessCount !== undefined) {
+      setClause.push(`access_count = $${paramIndex++}`);
+      values.push(updates.accessCount);
+    }
+    if (updates.size !== undefined) {
+      setClause.push(`size = $${paramIndex++}`);
+      values.push(updates.size);
+    }
+    if (updates.tags !== undefined) {
+      setClause.push(`tags = $${paramIndex++}`);
+      values.push(JSON.stringify(updates.tags));
+    }
+    if (updates.expiresAt !== undefined) {
+      setClause.push(`expires_at = $${paramIndex++}`);
+      values.push(updates.expiresAt);
+    }
+
+    setClause.push(`updated_at = NOW()`);
+    values.push(key);
+
+    await this.query(
+      `UPDATE tiered_storage_metadata SET ${setClause.join(', ')} WHERE id = $${paramIndex}`,
+      values
+    );
+  }
+
+  /**
+   * Creates tiered storage tables if they don't exist
+   */
+  async createTieredStorageTables(): Promise<void> {
+    const tables = [
+      `CREATE TABLE IF NOT EXISTS tiered_storage_warm (
+        id VARCHAR(255) PRIMARY KEY,
+        value TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS tiered_storage_cold (
+        id VARCHAR(255) PRIMARY KEY,
+        value TEXT NOT NULL,
+        compressed BOOLEAN DEFAULT false,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS tiered_storage_backup (
+        id VARCHAR(255) PRIMARY KEY,
+        value TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_tiered_warm_created ON tiered_storage_warm(created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_tiered_cold_created ON tiered_storage_cold(created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_tiered_backup_created ON tiered_storage_backup(created_at)`
+    ];
+
+    for (const table of tables) {
+      await this.query(table);
+    }
+  }
+
+  /**
+   * Gets migration tracking information
+   * @param limit - Maximum number of records to return
+   * @returns Array of migration records
+   */
+  async getMigrationLog(limit: number = 100): Promise<Array<{
+    id: number;
+    dataId: string;
+    fromTier: StorageTier;
+    toTier: StorageTier;
+    migratedAt: Date;
+    reason: string;
+    success: boolean;
+    errorMessage?: string;
+  }>> {
+    const result = await this.query(
+      `SELECT * FROM tier_migration_log
+       ORDER BY migrated_at DESC
+       LIMIT $1`,
+      [limit]
+    );
+
+    return result.rows.map((row: any) => ({
+      id: row.id,
+      dataId: row.data_id,
+      fromTier: row.from_tier as StorageTier,
+      toTier: row.to_tier as StorageTier,
+      migratedAt: row.migrated_at,
+      reason: row.reason,
+      success: row.success,
+      errorMessage: row.error_message
+    }));
+  }
+
+  /**
+   * Logs a migration event
+   * @param dataId - Data key
+   * @param fromTier - Source tier
+   * @param toTier - Target tier
+   * @param reason - Migration reason
+   * @param success - Whether migration succeeded
+   * @param errorMessage - Error message if migration failed
+   */
+  async logMigration(
+    dataId: string,
+    fromTier: StorageTier,
+    toTier: StorageTier,
+    reason: string,
+    success: boolean = true,
+    errorMessage?: string
+  ): Promise<void> {
+    await this.query(
+      `INSERT INTO tier_migration_log (data_id, from_tier, to_tier, reason, success, error_message)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [dataId, fromTier, toTier, reason, success, errorMessage]
+    );
+  }
+
+  /**
+   * Compresses data using simple compression
+   * In production, use a proper compression library like zlib
+   * @param data - Data to compress
+   * @returns Compressed data
+   */
+  private compressData(data: string): string {
+    // Placeholder - implement proper compression using zlib
+    return data;
+  }
+
+  /**
+   * Decompresses data
+   * In production, use a proper decompression library like zlib
+   * @param data - Data to decompress
+   * @returns Decompressed data
+   */
+  private decompressData(data: string): string {
+    // Placeholder - implement proper decompression using zlib
+    return data;
   }
 }
