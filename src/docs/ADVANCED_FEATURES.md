@@ -10,6 +10,11 @@ This comprehensive guide covers the advanced features implemented in the Self-Ed
 - [Safety Validation Pipeline](#safety-validation-pipeline)
 - [Tool Execution Framework](#tool-execution-framework)
 - [Plugin Loading System](#plugin-loading-system)
+- [Multi-tier Storage](#multi-tier-storage)
+- [Monitoring and Metrics](#monitoring-and-metrics)
+- [Distributed Tracing](#distributed-tracing)
+- [Self-healing Mechanisms](#self-healing-mechanisms)
+- [Advanced Caching](#advanced-caching)
 - [Integration Examples](#integration-examples)
 - [Best Practices](#best-practices)
 - [API Reference](#api-reference)
@@ -18,13 +23,23 @@ This comprehensive guide covers the advanced features implemented in the Self-Ed
 
 ## Overview
 
-The Self-Editing Discord Bot includes five major advanced features that work together to create a powerful, autonomous AI system:
+The Self-Editing Discord Bot includes ten major advanced features that work together to create a powerful, autonomous AI system:
+
+### Phase 1 Features (Self-Modification Capabilities)
 
 1. **Code Modification Engine** - Autonomous code analysis and modification with comprehensive validation
 2. **Vector Database Integration** - Semantic search and embedding storage for intelligent retrieval
 3. **Safety Validation Pipeline** - Multi-stage validation system for safe self-editing operations
 4. **Tool Execution Framework** - Extensible tool system for Discord operations
 5. **Plugin Loading System** - Dynamic plugin management with hot-reloading capabilities
+
+### Phase 2 Features (Medium-Priority Features) ✅ **COMPLETED**
+
+6. **Multi-tier Storage** - Intelligent data management with automatic migration between storage tiers
+7. **Monitoring and Metrics** - Comprehensive observability with Prometheus-based metrics, health monitoring, anomaly detection, and alert management
+8. **Distributed Tracing** - End-to-end request visibility with multiple exporters and automatic context propagation
+9. **Self-healing Mechanisms** - Automatic recovery from failures with multiple recovery strategies
+10. **Advanced Caching** - Multi-level caching with intelligent warming and invalidation strategies
 
 These features are designed to work together seamlessly, providing a robust foundation for autonomous bot improvement and community-driven feature development.
 
@@ -995,6 +1010,907 @@ The plugin loader scans for dangerous patterns:
 
 ---
 
+## Multi-tier Storage
+
+### Feature Overview
+
+The Multi-tier Storage system provides intelligent data management with automatic migration between storage tiers based on access patterns, data lifecycle tracking, and configurable retention policies. This ensures optimal performance and cost efficiency by storing frequently accessed data in fast storage and moving less accessed data to slower but cheaper storage.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Multi-tier Storage System                       │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐ │
+│  │   Hot     │    │   Warm    │    │   Cold    │    │  Backup   │ │
+│  │  (Redis)  │───▶│(PostgreSQL)│───▶│(PostgreSQL)│───▶│(Encrypted)│ │
+│  │  <1ms     │    │  <50ms    │    │  <200ms   │    │  <500ms   │ │
+│  └──────────┘    └──────────┘    └──────────┘    └──────────┘ │
+│         │                │                │                │           │
+│         └────────────────┴────────────────┴────────────────┘           │
+│                          │                                       │
+│                    ┌──────────────┐                              │
+│                    │  Migration    │                              │
+│                    │   Engine     │                              │
+│                    └──────────────┘                              │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Components
+
+- **TieredStorageManager**: Main storage manager with automatic tier migration
+- **DataLifecycleManager**: Tracks access patterns and manages data lifecycle
+- **RetentionPolicyManager**: Manages retention policies and enforcement
+
+### Storage Tiers
+
+| Tier | Technology | Access Time | Use Case | Retention |
+|-------|------------|-------------|-----------|------------|
+| **Hot** | Redis | <1ms | Frequently accessed data | 1 hour (default) |
+| **Warm** | PostgreSQL | <50ms | Recently accessed data | 90 days (default) |
+| **Cold** | PostgreSQL (compressed) | <200ms | Historical data | 365 days (default) |
+| **Backup** | Encrypted storage | <500ms | Long-term archival | 7 years (default) |
+
+### Configuration
+
+```typescript
+interface TieredStorageConfig {
+  hot?: {
+    enabled: boolean;
+    ttl: number;           // Time-to-live in seconds
+    maxSize: number;        // Maximum number of entries
+  };
+  warm?: {
+    enabled: boolean;
+    retentionDays: number;  // Retention period in days
+  };
+  cold?: {
+    enabled: boolean;
+    retentionDays: number;
+    compressionEnabled: boolean;
+  };
+  backup?: {
+    enabled: boolean;
+    retentionDays: number;
+    schedule: string;        // Cron schedule for backups
+  };
+  migration?: {
+    enabled: boolean;
+    intervalMinutes: number; // Migration interval
+    batchSize: number;      // Batch size for migrations
+  };
+}
+```
+
+### Usage Patterns
+
+#### Basic Storage Operations
+
+```typescript
+const { tieredStorage } = createTieredStorageSystem(postgresManager, redisManager);
+
+// Store data
+await tieredStorage.store('user:123', userData, DataType.USER_PROFILE);
+
+// Retrieve data
+const data = await tieredStorage.retrieve('user:123');
+
+// Delete data
+await tieredStorage.delete('user:123');
+
+// Check if data exists
+const exists = await tieredStorage.exists('user:123');
+```
+
+#### Lifecycle Management
+
+```typescript
+const { lifecycleManager } = createTieredStorageSystem(postgresManager, redisManager);
+
+// Track data access
+await lifecycleManager.trackData('user:123', {
+    dataType: DataType.USER_PROFILE,
+    accessCount: 10,
+    lastAccessed: new Date(),
+    firstAccessed: new Date('2026-01-01')
+});
+
+// Analyze access patterns
+const pattern = await lifecycleManager.analyzeAccessPattern('user:123');
+console.log('Access frequency:', pattern.frequency);
+console.log('Access trend:', pattern.trend);
+
+// Get lifecycle statistics
+const stats = await lifecycleManager.getStatistics();
+console.log('Total data items:', stats.totalItems);
+console.log('Migration count:', stats.migrationCount);
+```
+
+#### Retention Policy Management
+
+```typescript
+const { policyManager } = createTieredStorageSystem(postgresManager, redisManager);
+
+// Create retention policy
+const policy = await policyManager.createPolicy({
+    name: 'User Data Policy',
+    dataType: DataType.USER_PROFILE,
+    tier: 'warm',
+    maxRetentionDays: 30,
+    enabled: true,
+    priority: 5,
+    description: 'Retention policy for user profiles'
+});
+
+// Get policy violations
+const violations = await policyManager.checkPolicyViolations();
+console.log('Policy violations:', violations);
+
+// Enforce policies
+const report = await policyManager.enforcePolicies();
+console.log('Enforcement report:', report);
+```
+
+### Best Practices
+
+1. **Choose appropriate tiers** - Store frequently accessed data in hot tier, historical data in cold tier
+2. **Monitor migration** - Track migration statistics to ensure efficient data movement
+3. **Set appropriate TTL** - Balance performance and storage costs with TTL values
+4. **Use retention policies** - Define clear retention policies for different data types
+5. **Monitor access patterns** - Analyze access patterns to optimize tier placement
+6. **Enable compression** - Use compression for cold tier to reduce storage costs
+7. **Regular backups** - Schedule regular backups for disaster recovery
+8. **Clean up old data** - Implement data cleanup based on retention policies
+
+### Performance Optimization
+
+```typescript
+// Get storage statistics
+const stats = await tieredStorage.getStatistics();
+console.log('Hot tier size:', stats.hotSize);
+console.log('Warm tier size:', stats.warmSize);
+console.log('Cold tier size:', stats.coldSize);
+console.log('Migration efficiency:', stats.migrationEfficiency);
+
+// Optimize based on statistics
+if (stats.migrationEfficiency < 0.8) {
+    console.log('Migration efficiency low, adjusting interval');
+    tieredStorage.updateConfig({
+        migration: { intervalMinutes: 30 } // Reduce interval
+    });
+}
+```
+
+---
+
+## Monitoring and Metrics
+
+### Feature Overview
+
+The Monitoring and Metrics system provides comprehensive observability with Prometheus-based metrics collection, health monitoring, anomaly detection (statistical and ML-based), and alert management with multiple notification channels. This enables proactive monitoring and rapid issue detection and resolution.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                  Monitoring and Metrics System                      │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────┐    ┌──────────────┐    ┌───────────┐ │
+│  │   Metrics    │    │    Health     │    │   Anomaly   │ │
+│  │  Collector   │    │   Monitor     │    │  Detector   │ │
+│  └──────────────┘    └──────────────┘    └───────────┘ │
+│         │                    │                   │           │
+│         └────────────────────┴───────────────────┘           │
+│                          │                                   │
+│                    ┌──────────────┐                            │
+│                    │   Alert      │                            │
+│                    │   Manager    │                            │
+│                    └──────────────┘                            │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Components
+
+- **MetricsCollector**: Prometheus-based metrics for performance, application, business, database, API, and error tracking
+- **HealthMonitor**: Component and dependency health checks with recovery actions
+- **AnomalyDetector**: Statistical and ML-based anomaly detection with baseline learning
+- **AlertManager**: Rules-based alerting with multiple notification channels (Email, Slack, Discord, PagerDuty, Webhook)
+
+### Metric Categories
+
+| Category | Metrics | Use Case |
+|-----------|----------|-----------|
+| **Performance** | CPU, memory, response time, throughput | System performance monitoring |
+| **Application** | Requests, errors, active users, feature usage | Application health monitoring |
+| **Business** | Conversions, engagement, revenue | Business metrics tracking |
+| **Database** | Query time, connection pool, slow queries | Database performance monitoring |
+| **API** | Request rate, error rate, latency | API performance monitoring |
+| **Error Tracking** | Error count, error rate, error types | Error monitoring and alerting |
+
+### Configuration
+
+```typescript
+interface MonitoringSystemConfig {
+  metrics?: {
+    enabled: boolean;
+    interval: number;        // Collection interval in ms
+    retention: number;       // Data retention in days
+    aggregation: boolean;     // Enable metric aggregation
+    collectDefaultMetrics: boolean;
+  };
+  health?: {
+    enabled: boolean;
+    checkInterval: number;    // Health check interval in ms
+    alertThreshold: number;   // Health score threshold for alerts
+    recoveryEnabled: boolean;
+    recoveryAttempts: number;
+  };
+  anomaly?: {
+    enabled: boolean;
+    baselineWindow: number;   // Baseline window size
+    detectionThreshold: number; // Detection threshold in std devs
+    mlEnabled: boolean;      // Enable ML-based detection
+    mlModelType: 'isolation_forest' | 'one_class_svm';
+  };
+  alerts?: {
+    enabled: boolean;
+    evaluationInterval: number; // Alert evaluation interval in ms
+    notificationChannels: Array<'email' | 'slack' | 'discord' | 'pagerduty' | 'webhook'>;
+  };
+}
+```
+
+### Usage Patterns
+
+#### Basic Metrics Collection
+
+```typescript
+const monitoring = createMonitoringSystem();
+await startMonitoringSystem(monitoring);
+
+// Record counter metric
+monitoring.metrics.recordCounter('requests_total', 1, {
+    method: 'GET',
+    endpoint: '/api/users',
+    status: '200'
+});
+
+// Record gauge metric
+monitoring.metrics.recordGauge('active_connections', 42);
+
+// Record histogram metric
+monitoring.metrics.recordHistogram('request_duration_ms', 125, {
+    endpoint: '/api/users',
+    method: 'GET'
+});
+
+// Get performance metrics
+const perfMetrics = await monitoring.metrics.getPerformanceMetrics();
+console.log('Average response time:', perfMetrics.avgResponseTime);
+console.log('P95 response time:', perfMetrics.p95ResponseTime);
+```
+
+#### Health Monitoring
+
+```typescript
+// Get current health
+const health = monitoring.health.getCurrentHealth();
+console.log('Overall health:', health.overallScore);
+console.log('Component health:', health.components);
+
+// Get health history
+const history = monitoring.health.getHealthHistory(24); // Last 24 hours
+console.log('Health trends:', history);
+
+// Trigger health check
+const result = await monitoring.health.checkHealth();
+console.log('Health check result:', result);
+```
+
+#### Anomaly Detection
+
+```typescript
+// Detect anomaly
+const anomaly = await monitoring.anomaly.detectAnomaly('cpu_usage', 85.5);
+console.log('Anomaly detected:', anomaly.isAnomaly);
+console.log('Severity:', anomaly.severity);
+console.log('Confidence:', anomaly.confidence);
+
+// Get baseline statistics
+const baseline = monitoring.anomaly.getBaseline('cpu_usage');
+console.log('Mean:', baseline.mean);
+console.log('Std deviation:', baseline.stdDev);
+
+// Get anomaly history
+const alerts = monitoring.anomaly.getAnomalyHistory();
+console.log('Recent anomalies:', alerts);
+```
+
+#### Alert Management
+
+```typescript
+// Create alert rule
+await monitoring.alerts.createRule({
+    name: 'High CPU Usage',
+    condition: {
+        metric: 'cpu_usage_percent',
+        operator: '>',
+        threshold: 80,
+        duration: 300000 // 5 minutes
+    },
+    severity: 'high',
+    notificationChannels: ['slack', 'discord']
+});
+
+// Get active alerts
+const activeAlerts = monitoring.alerts.getActiveAlerts();
+console.log('Active alerts:', activeAlerts);
+
+// Get alert history
+const history = monitoring.alerts.getAlertHistory();
+console.log('Alert history:', history);
+```
+
+### Best Practices
+
+1. **Set appropriate intervals** - Balance monitoring overhead with data granularity
+2. **Use meaningful labels** - Add labels to metrics for better filtering and aggregation
+3. **Define clear thresholds** - Set alert thresholds based on SLA requirements
+4. **Monitor baselines** - Track baseline metrics to detect deviations
+5. **Use multiple channels** - Configure multiple notification channels for critical alerts
+6. **Regular review** - Review and update alert rules regularly
+7. **Aggregate metrics** - Use metric aggregation to reduce storage overhead
+8. **Retention management** - Set appropriate retention periods based on compliance needs
+
+### Performance Optimization
+
+```typescript
+// Get monitoring summary
+const summary = await getMonitoringSummary(monitoring);
+console.log('Metrics uptime:', summary.uptime.metrics);
+console.log('Health uptime:', summary.uptime.health);
+console.log('Active alerts:', summary.alerts.active.length);
+
+// Export metrics for Prometheus
+const prometheusMetrics = await exportMonitoringMetrics(monitoring);
+console.log('Prometheus metrics:', prometheusMetrics);
+
+// Get Grafana dashboard config
+const grafanaConfig = getGrafanaDashboardConfig();
+console.log('Grafana dashboard:', grafanaConfig);
+```
+
+---
+
+## Distributed Tracing
+
+### Feature Overview
+
+The Distributed Tracing system provides end-to-end request visibility with support for multiple exporters (OTLP, Jaeger, Zipkin, Console), automatic context propagation, and instrumentation for HTTP, database, Redis, and Discord API calls. This enables deep insight into request flows and performance bottlenecks.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                  Distributed Tracing System                        │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────┐    ┌──────────────┐    ┌───────────┐ │
+│  │    Tracer     │    │    Context    │    │ Instrument-│ │
+│  │               │    │   Manager     │    │   ation   │ │
+│  └──────────────┘    └──────────────┘    └───────────┘ │
+│         │                    │                   │           │
+│         └────────────────────┴───────────────────┘           │
+│                          │                                   │
+│                    ┌──────────────┐                            │
+│                    │   Exporter   │                            │
+│                    │  (OTLP/Jaeger/│                            │
+│                    │   Zipkin/Console)│                          │
+│                    └──────────────┘                            │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Components
+
+- **MegawattsTracer**: Main tracer for creating and managing spans
+- **TraceContextManager**: Manages trace context propagation
+- **TracingInstrumentation**: Automatic instrumentation for common operations
+- **TracingExporter**: Export traces to various backends (OTLP, Jaeger, Zipkin, Console)
+
+### Supported Exporters
+
+| Exporter | Protocol | Use Case | Configuration |
+|-----------|-----------|-----------|----------------|
+| **OTLP** | gRPC/HTTP | OpenTelemetry Protocol (recommended) | Endpoint URL |
+| **Jaeger** | HTTP | Jaeger distributed tracing platform | Agent endpoint |
+| **Zipkin** | HTTP | Zipkin distributed tracing system | API endpoint |
+| **Console** | N/A | Development and debugging | N/A |
+
+### Configuration
+
+```typescript
+interface TracingInitOptions {
+  serviceName: string;           // Service name (required)
+  serviceVersion?: string;        // Service version
+  exporterType?: 'otlp' | 'jaeger' | 'zipkin' | 'console';
+  endpoint?: string;             // OTLP endpoint
+  jaegerEndpoint?: string;       // Jaeger endpoint
+  zipkinEndpoint?: string;       // Zipkin endpoint
+  samplingRate?: number;         // Sampling rate 0.0-1.0
+  enableHttpInstrumentation?: boolean;
+  enableDatabaseInstrumentation?: boolean;
+  enableRedisInstrumentation?: boolean;
+  enableDiscordInstrumentation?: boolean;
+}
+```
+
+### Usage Patterns
+
+#### Basic Tracing
+
+```typescript
+await initializeTracing({
+    serviceName: 'megawatts-bot',
+    exporterType: 'otlp',
+    endpoint: 'http://localhost:4317',
+    samplingRate: 0.1
+});
+
+const tracer = getTracer();
+
+// Create a span
+const span = tracer.startSpan('process_message', {
+    attributes: {
+        'message.id': 'msg_123',
+        'channel.id': 'channel_456'
+    }
+});
+
+try {
+    span.addEvent('processing_started');
+    
+    await processMessage();
+    
+    span.addEvent('processing_completed');
+    
+    span.setStatus({ code: 0, message: 'OK' });
+} catch (error) {
+    span.setStatus({
+        code: 2,
+        message: 'ERROR',
+        message: error.message
+    });
+    span.recordException(error);
+} finally {
+    tracer.endSpan(span);
+}
+```
+
+#### Context Propagation
+
+```typescript
+// Inject context into headers
+const headers = {};
+injectTraceContextToHeaders(tracer.getCurrentContext(), headers);
+
+// Later, extract context from headers
+const context = extractTraceContextFromHeaders(headers);
+tracer.setContext(context);
+
+// Use withSpan helper
+await tracer.withSpan('database_query', async (span) => {
+    span.setAttribute('query.type', 'SELECT');
+    span.setAttribute('table.name', 'users');
+    
+    const result = await database.query('SELECT * FROM users');
+    
+    span.setAttribute('result.count', result.length);
+});
+```
+
+#### Automatic Instrumentation
+
+```typescript
+// HTTP instrumentation is automatic
+// Database instrumentation is automatic
+// Redis instrumentation is automatic
+// Discord API instrumentation is automatic
+
+// Just enable them during initialization
+await initializeTracing({
+    serviceName: 'megawatts-bot',
+    enableHttpInstrumentation: true,
+    enableDatabaseInstrumentation: true,
+    enableRedisInstrumentation: true,
+    enableDiscordInstrumentation: true
+});
+```
+
+### Best Practices
+
+1. **Use appropriate sampling** - Reduce overhead in production with sampling
+2. **Add meaningful attributes** - Add context to spans for better filtering
+3. **Use span events** - Add events for important milestones
+4. **Set proper status** - Always set span status (OK, ERROR)
+5. **Propagate context** - Ensure context is propagated across services
+6. **Use helper functions** - Use `withSpan` for automatic span management
+7. **Monitor trace volume** - Monitor trace volume to avoid performance impact
+8. **Choose appropriate exporter** - Use OTLP for production, Console for development
+
+### Performance Optimization
+
+```typescript
+// Use batch processing
+await initializeTracing({
+    serviceName: 'megawatts-bot',
+    enableBatch: true  // Enable batch processing
+});
+
+// Adjust sampling rate
+await initializeTracing({
+    serviceName: 'megawatts-bot',
+    samplingRate: 0.01  // Sample 1% of traces in production
+});
+
+// Shutdown tracing gracefully
+await shutdownTracing();
+```
+
+---
+
+## Self-healing Mechanisms
+
+### Feature Overview
+
+The Self-healing Mechanisms provide automatic recovery from failures with service restart automation, configuration rollback, module reload, cache rebuild, graceful degradation, emergency mode activation, and circuit breaker pattern implementation. This ensures high availability and minimal downtime.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                  Self-healing System                              │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────────┐    ┌──────────────┐    ┌───────────┐ │
+│  │   Healing     │    │  Circuit      │    │ Graceful   │ │
+│  │ Orchestrator  │    │  Breaker     │    │ Degradation│ │
+│  └──────────────┘    └──────────────┘    └───────────┘ │
+│         │                    │                   │           │
+│         └────────────────────┴───────────────────┘           │
+│                          │                                   │
+│                    ┌──────────────┐                            │
+│                    │  Recovery    │                            │
+│                    │  Strategies  │                            │
+│                    └──────────────┘                            │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Components
+
+- **HealingOrchestrator**: Main orchestrator for healing operations
+- **CircuitBreaker**: Circuit breaker pattern implementation
+- **GracefulDegradation**: Graceful degradation management
+- **RecoveryStrategies**: Various recovery strategies (restart, rollback, reload, rebuild)
+
+### Recovery Strategies
+
+| Strategy | Use Case | Execution Time | Success Rate |
+|-----------|-----------|----------------|---------------|
+| **Service Restart** | Service crash or hang | <30s | 95% |
+| **Configuration Rollback** | Bad configuration change | <60s | 90% |
+| **Module Reload** | Module error or update | <10s | 98% |
+| **Cache Rebuild** | Cache corruption | <120s | 99% |
+| **Graceful Degradation** | High load or partial failure | Immediate | 100% |
+| **Emergency Mode** | Critical system failure | Immediate | 100% |
+
+### Configuration
+
+```typescript
+interface HealingSystemConfig {
+  autoRecoveryEnabled?: boolean;
+  monitoringInterval?: number;      // Monitoring interval in ms
+  orchestratorConfig?: {
+    maxConcurrentRecoveries: number;
+    recoveryTimeout: number;       // Recovery timeout in ms
+    strategySelection: 'intelligent' | 'priority' | 'random';
+  };
+  circuitBreakerConfig?: {
+    enabled: boolean;
+    failureThreshold: number;      // Failures before opening
+    successThreshold: number;      // Successes to close
+    timeout: number;             // Timeout in ms
+    halfOpenMaxCalls: number;     // Max calls in half-open state
+  };
+  gracefulDegradationConfig?: {
+    enabled: boolean;
+    levels: Array<'full' | 'reduced' | 'minimal' | 'emergency'>;
+    autoActivate: boolean;
+  };
+}
+```
+
+### Usage Patterns
+
+#### Basic Healing
+
+```typescript
+const healingSystem = await createHealingSystem({
+    autoRecoveryEnabled: true,
+    monitoringInterval: 30000,
+    orchestratorConfig: {
+        maxConcurrentRecoveries: 3,
+        recoveryTimeout: 300000,
+        strategySelection: 'intelligent'
+    }
+});
+
+// System will automatically detect and recover from failures
+await healingSystem.start();
+```
+
+#### Manual Recovery
+
+```typescript
+// Trigger manual recovery
+await healingSystem.triggerRecovery('database_service', 'restart');
+
+// Get system status
+const status = healingSystem.getSystemStatus();
+console.log('Healing system status:', status);
+```
+
+#### Recovery History
+
+```typescript
+// Get recovery history
+const history = healingSystem.getRecoveryHistory(10);
+console.log('Recovery history:', history);
+
+// Get recovery analytics
+const analytics = healingSystem.getRecoveryAnalytics();
+console.log('Recovery analytics:', analytics);
+```
+
+### Best Practices
+
+1. **Enable auto-recovery** - Enable automatic recovery for minimal downtime
+2. **Set appropriate timeouts** - Configure recovery timeouts based on service characteristics
+3. **Monitor recovery attempts** - Track recovery success rates and adjust strategies
+4. **Use circuit breakers** - Implement circuit breakers to prevent cascading failures
+5. **Configure degradation levels** - Define clear degradation levels for different scenarios
+6. **Test recovery strategies** - Regularly test recovery strategies to ensure they work
+7. **Monitor system health** - Integrate with health monitoring for proactive healing
+8. **Review recovery logs** - Regularly review recovery logs to identify patterns
+
+### Performance Optimization
+
+```typescript
+// Optimize monitoring interval
+await healingSystem.updateConfig({
+    monitoringInterval: 60000  // Reduce monitoring overhead
+});
+
+// Limit concurrent recoveries
+await healingSystem.updateConfig({
+    orchestratorConfig: {
+        maxConcurrentRecoveries: 2  // Limit concurrent recoveries
+    }
+});
+
+// Stop healing system when not needed
+await healingSystem.stop();
+```
+
+---
+
+## Advanced Caching
+
+### Feature Overview
+
+The Advanced Caching system provides multi-level caching with L1 (memory), L2 (Redis), and L3 (CDN) layers, intelligent cache warming, predictive pre-fetching, cache invalidation strategies, and configurable eviction policies (LRU, LFU, FIFO). This ensures high performance and reduced latency for frequently accessed data.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                  Advanced Caching System                           │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐           │
+│  │    L1     │    │    L2     │    │    L3     │           │
+│  │ (Memory)  │───▶│  (Redis)  │───▶│   (CDN)   │           │
+│  │  <1ms     │    │  <10ms    │    │  <50ms    │           │
+│  └──────────┘    └──────────┘    └──────────┘           │
+│         │                │                │                    │
+│         └────────────────┴────────────────┘                    │
+│                          │                                    │
+│  ┌──────────────┐    ┌──────────────┐    ┌───────────┐ │
+│  │   Cache      │    │   Cache      │    │  Cache    │ │
+│  │  Warming    │    │ Invalidation  │    │  Policy   │ │
+│  └──────────────┘    └──────────────┘    └───────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Components
+
+- **MultiLevelCache**: Multi-level cache with automatic fallback
+- **CacheWarmer**: Pre-populate cache with frequently accessed data
+- **CacheInvalidationManager**: Event-based and dependency-based invalidation
+- **CachePolicyManager**: Manage eviction policies (LRU, LFU, FIFO)
+
+### Cache Layers
+
+| Layer | Technology | Access Time | Capacity | Use Case |
+|-------|------------|-------------|-----------|-----------|
+| **L1** | Memory | <1ms | Limited (configurable) | Hot data, frequently accessed |
+| **L2** | Redis | <10ms | Large | Warm data, recently accessed |
+| **L3** | CDN | <50ms | Very large | Cold data, static assets |
+
+### Eviction Policies
+
+| Policy | Algorithm | Use Case |
+|---------|-----------|-----------|
+| **LRU** | Least Recently Used | General purpose, good for temporal locality |
+| **LFU** | Least Frequently Used | Data with stable access patterns |
+| **FIFO** | First In First Out | Simple, predictable eviction |
+| **Custom** | User-defined | Specialized use cases |
+
+### Configuration
+
+```typescript
+interface MultiLevelCacheConfig {
+  l1?: {
+    maxSize: number;           // Maximum number of entries
+    ttl: number;              // Time-to-live in ms
+    policy: EvictionPolicy;    // LRU, LFU, FIFO, or custom
+  };
+  l2?: {
+    host: string;
+    port: number;
+    ttl: number;
+    policy: EvictionPolicy;
+  };
+  l3?: {
+    enabled: boolean;
+    ttl: number;
+    policy: EvictionPolicy;
+  };
+  warming?: {
+    enabled: boolean;
+    schedule: string;          // Cron schedule
+    strategy: 'access_frequency' | 'time_based' | 'predictive';
+  };
+  invalidation?: {
+    enabled: boolean;
+    checkInterval: number;     // Check interval in ms
+  };
+}
+```
+
+### Usage Patterns
+
+#### Basic Cache Operations
+
+```typescript
+const cacheSystem = createDefaultCacheSystem({
+    l1: {
+        maxSize: 1000,
+        ttl: 60000,
+        policy: new LRUPolicy()
+    },
+    l2: {
+        host: 'localhost',
+        port: 6379,
+        ttl: 3600000,
+        policy: new LRUPolicy()
+    }
+});
+
+await cacheSystem.initialize();
+
+// Set cache value
+await cacheSystem.set('user:123', userData, {
+    ttl: 3600000,
+    priority: 'high',
+    tags: ['user', 'profile']
+});
+
+// Get cache value
+const data = await cacheSystem.get('user:123');
+console.log('Cache hit:', data !== undefined);
+
+// Check if value exists
+const exists = await cacheSystem.has('user:123');
+
+// Delete value
+await cacheSystem.delete('user:123');
+```
+
+#### Cache Warming
+
+```typescript
+// Warm cache with data
+await cacheSystem.warmCache([
+    { key: 'user:123', value: userData },
+    { key: 'user:456', value: userData2 }
+]);
+
+// Get warming statistics
+const warmingStats = await cacheSystem.getWarmingStats();
+console.log('Warming progress:', warmingStats.progress);
+console.log('Warming efficiency:', warmingStats.efficiency);
+```
+
+#### Cache Invalidation
+
+```typescript
+// Invalidate by key
+await cacheSystem.invalidate('user:123');
+
+// Invalidate by tag
+await cacheSystem.invalidateByTag('user');
+
+// Invalidate by pattern
+await cacheSystem.invalidateByPattern('user:*');
+
+// Clear entire cache
+await cacheSystem.clear();
+```
+
+#### Cache Statistics
+
+```typescript
+// Get cache statistics
+const stats = await cacheSystem.getStats();
+console.log('Cache statistics:', stats);
+console.log('Hit rate:', stats.hits / (stats.hits + stats.misses));
+console.log('L1 hit rate:', stats.l1Hits / (stats.l1Hits + stats.l1Misses));
+console.log('L2 hit rate:', stats.l2Hits / (stats.l2Hits + stats.l2Misses));
+```
+
+### Best Practices
+
+1. **Use appropriate TTL** - Balance performance and data freshness
+2. **Choose right eviction policy** - Select policy based on access patterns
+3. **Monitor cache hit rate** - Track hit rate to optimize cache configuration
+4. **Use cache warming** - Pre-populate cache with frequently accessed data
+5. **Implement invalidation** - Use invalidation to keep cache fresh
+6. **Set appropriate size** - Configure cache size based on memory constraints
+7. **Use tags** - Tag cache entries for efficient invalidation
+8. **Monitor performance** - Track cache performance to identify bottlenecks
+
+### Performance Optimization
+
+```typescript
+// Optimize cache size
+if (stats.l1HitRate < 0.8) {
+    console.log('L1 hit rate low, increasing size');
+    cacheSystem.updateL1Config({
+        maxSize: 2000  // Double L1 size
+    });
+}
+
+// Optimize TTL
+if (stats.staleDataRate > 0.1) {
+    console.log('Stale data rate high, reducing TTL');
+    cacheSystem.updateConfig({
+        l1: { ttl: 30000 }  // Reduce TTL
+    });
+}
+
+// Use predictive warming
+cacheSystem.updateConfig({
+    warming: {
+        strategy: 'predictive'  // Use ML-based prediction
+    }
+});
+```
+
+---
+
 ## Integration Examples
 
 ### Combining Multiple Features
@@ -1136,6 +2052,124 @@ async function advancedWorkflow() {
 6. **Use Connection Pooling** - Reuse connections
 7. **Optimize Embeddings** - Choose appropriate model size
 8. **Profile Code** - Identify bottlenecks
+
+### Multi-tier Storage
+
+**Files**:
+- [`tieredStorage.ts`](../storage/tiered/tieredStorage.ts:1)
+- [`dataLifecycle.ts`](../storage/tiered/dataLifecycle.ts:1)
+- [`retentionPolicy.ts`](../storage/tiered/retentionPolicy.ts:1)
+- [`index.ts`](../storage/tiered/index.ts:1)
+
+**Main Classes**:
+- `TieredStorageManager` - Main storage manager
+- `DataLifecycleManager` - Lifecycle tracking and analysis
+- `RetentionPolicyManager` - Retention policy management
+
+**Key Methods**:
+- `store(key, data, dataType)` - Store data
+- `retrieve(key)` - Retrieve data
+- `delete(key)` - Delete data
+- `exists(key)` - Check if data exists
+- `trackData(key, metadata)` - Track data access
+- `analyzeAccessPattern(key)` - Analyze access patterns
+- `createPolicy(policy)` - Create retention policy
+- `checkPolicyViolations()` - Check for policy violations
+- `enforcePolicies()` - Enforce retention policies
+
+### Monitoring and Metrics
+
+**Files**:
+- [`metricsCollector.ts`](../monitoring/metricsCollector.ts:1)
+- [`healthMonitor.ts`](../monitoring/healthMonitor.ts:1)
+- [`anomalyDetector.ts`](../monitoring/anomalyDetector.ts:1)
+- [`alertManager.ts`](../monitoring/alertManager.ts:1)
+- [`index.ts`](../monitoring/index.ts:1)
+
+**Main Classes**:
+- `MetricsCollector` - Prometheus-based metrics collection
+- `HealthMonitor` - Component and dependency health monitoring
+- `AnomalyDetector` - Statistical and ML-based anomaly detection
+- `AlertManager` - Rules-based alert management
+
+**Key Methods**:
+- `recordCounter(name, value, labels)` - Record counter metric
+- `recordGauge(name, value, labels)` - Record gauge metric
+- `recordHistogram(name, value, labels)` - Record histogram metric
+- `getCurrentHealth()` - Get current health status
+- `detectAnomaly(metric, value)` - Detect anomaly
+- `createRule(rule)` - Create alert rule
+- `getActiveAlerts()` - Get active alerts
+
+### Distributed Tracing
+
+**Files**:
+- [`tracer.ts`](../tracing/tracer.ts:1)
+- [`exporter.ts`](../tracing/exporter.ts:1)
+- [`context.ts`](../tracing/context.ts:1)
+- [`instrumentation.ts`](../tracing/instrumentation.ts:1)
+- [`index.ts`](../tracing/index.ts:1)
+
+**Main Classes**:
+- `MegawattsTracer` - Main tracer for creating and managing spans
+- `TraceContextManager` - Manages trace context propagation
+- `TracingInstrumentation` - Automatic instrumentation
+- `TracingExporter` - Export traces to backends
+
+**Key Methods**:
+- `startSpan(name, options)` - Create a new span
+- `endSpan(span)` - End a span
+- `addEvent(span, name, attributes)` - Add event to span
+- `setStatus(span, status)` - Set span status
+- `recordException(span, error)` - Record exception
+
+### Self-healing Mechanisms
+
+**Files**:
+- [`healingOrchestrator.ts`](../healing/healingOrchestrator.ts:1)
+- [`recoveryStrategies.ts`](../healing/recoveryStrategies.ts:1)
+- [`circuitBreaker.ts`](../healing/circuitBreaker.ts:1)
+- [`gracefulDegradation.ts`](../healing/gracefulDegradation.ts:1)
+- [`index.ts`](../healing/index.ts:1)
+
+**Main Classes**:
+- `HealingSystem` - Main healing system
+- `HealingOrchestrator` - Healing orchestration
+- `CircuitBreaker` - Circuit breaker pattern
+- `GracefulDegradation` - Graceful degradation management
+
+**Key Methods**:
+- `start()` - Start healing system
+- `stop()` - Stop healing system
+- `triggerRecovery(component, strategy)` - Trigger manual recovery
+- `getSystemStatus()` - Get system status
+- `getRecoveryHistory(limit)` - Get recovery history
+- `getRecoveryAnalytics()` - Get recovery analytics
+
+### Advanced Caching
+
+**Files**:
+- [`multiLevelCache.ts`](../cache/multiLevelCache.ts:1)
+- [`cacheInvalidation.ts`](../cache/cacheInvalidation.ts:1)
+- [`cachePolicies.ts`](../cache/cachePolicies.ts:1)
+- [`cacheWarmer.ts`](../cache/cacheWarmer.ts:1)
+- [`index.ts`](../storage/cache/index.ts:1)
+
+**Main Classes**:
+- `MultiLevelCache` - Multi-level cache system
+- `CacheInvalidationManager` - Cache invalidation management
+- `CachePolicyManager` - Eviction policy management
+- `CacheWarmer` - Cache warming system
+
+**Key Methods**:
+- `set(key, value, options)` - Set cache value
+- `get(key)` - Get cache value
+- `has(key)` - Check if value exists
+- `delete(key)` - Delete value
+- `invalidate(key)` - Invalidate value
+- `invalidateByTag(tag)` - Invalidate by tag
+- `warmCache(entries)` - Warm cache with entries
+- `getStats()` - Get cache statistics
 
 ---
 
