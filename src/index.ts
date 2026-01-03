@@ -7,6 +7,8 @@ import { HealthManager } from './core/health/index';
 import { Logger as UtilsLogger } from './utils/logger';
 import { MessageRouter } from './core/processing/messageRouter';
 import { DEFAULT_PIPELINE_CONFIG, IntentType, RiskLevel } from './core/processing/types';
+import { RedisConnectionManager } from './storage/database/redis';
+import { DistributedLock } from './utils/distributed-lock';
 
 // Load environment variables FIRST
 dotenv.config();
@@ -180,6 +182,8 @@ class SelfEditingDiscordBot {
   private healthServer: HealthServer;
   private isReady: boolean = false;
   private messageRouter: MessageRouter;
+  private redis: RedisConnectionManager;
+  private distributedLock: DistributedLock;
 
   constructor(
     private token: string,
@@ -191,12 +195,33 @@ class SelfEditingDiscordBot {
     this.healthManager = new HealthManager();
     this.healthServer = new HealthServer(this.healthManager, this.config);
     this.messageRouter = new MessageRouter(DEFAULT_PIPELINE_CONFIG);
+
+    // Initialize Redis connection
+    const redisConfig: any = {
+      host: process.env.REDIS_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || '6379'),
+      database: 0,
+      connectTimeout: 10000,
+      keepAlive: 30000,
+    };
+    // Only include password if it's actually provided (non-empty string)
+    if (process.env.REDIS_PASSWORD) {
+      redisConfig.password = process.env.REDIS_PASSWORD;
+    }
+    this.redis = new RedisConnectionManager(redisConfig);
+
+    // Initialize distributed lock
+    this.distributedLock = new DistributedLock(this.redis, 'DistributedLock');
   }
 
   // Initialize Discord client and health server
   async initialize(): Promise<void> {
     try {
-      // Initialize health manager first
+      // Initialize Redis connection first
+      await this.redis.connect();
+      this.logger.info('Redis connection established');
+
+      // Initialize health manager
       await this.healthManager.initialize();
       this.logger.info('Health manager initialized');
 
@@ -293,6 +318,10 @@ class SelfEditingDiscordBot {
         this.client.destroy();
       }
       
+      // Disconnect Redis
+      await this.redis.disconnect();
+      this.logger.info('Redis connection closed');
+      
       // Destroy health manager
       this.healthManager.destroy();
       
@@ -302,7 +331,7 @@ class SelfEditingDiscordBot {
     }
   }
 
-  // Message handling with intent recognition
+  // Message handling with intent recognition and distributed locking
   private async handleMessage(message: Message): Promise<void> {
     // Early exit for non-command messages
     if (!message.content.startsWith('!')) {
@@ -334,28 +363,43 @@ class SelfEditingDiscordBot {
       return;
     }
     
-    // Only log and process if we should respond
-    this.logger.info(`Received message from ${message.author.username}: ${message.content}`);
-    const content = message.content.toLowerCase().trim();
-    let intentType: BotIntent;
-    if (content.startsWith('!help')) {
-      intentType = BotIntent.Help;
-    } else if (content.startsWith('!ping')) {
-      intentType = BotIntent.Ping;
-    } else if (content.startsWith('!status')) {
-      intentType = BotIntent.Status;
-    } else if (content.startsWith('!config')) {
-      intentType = BotIntent.Config;
-    } else if (content.startsWith('!self_edit')) {
-      intentType = BotIntent.SelfEdit;
-    } else if (content.startsWith('!analyze')) {
-      intentType = BotIntent.Analyze;
-    } else if (content.startsWith('!optimize')) {
-      intentType = BotIntent.Optimize;
-    } else {
-      intentType = BotIntent.Help;
+    // Use distributed lock to ensure only one instance processes this message
+    // Lock key: bot:lock:message:{messageId}
+    // TTL: 30 seconds (enough for message processing, auto-releases if something fails)
+    const lockKey = `message:${message.id}`;
+    const lockAcquired = await this.distributedLock.withLock(
+      lockKey,
+      async () => {
+        // Only log and process if we have the lock
+        this.logger.info(`[LOCKED] Processing message from ${message.author.username}: ${message.content}`);
+        const content = message.content.toLowerCase().trim();
+        let intentType: BotIntent;
+        if (content.startsWith('!help')) {
+          intentType = BotIntent.Help;
+        } else if (content.startsWith('!ping')) {
+          intentType = BotIntent.Ping;
+        } else if (content.startsWith('!status')) {
+          intentType = BotIntent.Status;
+        } else if (content.startsWith('!config')) {
+          intentType = BotIntent.Config;
+        } else if (content.startsWith('!self_edit')) {
+          intentType = BotIntent.SelfEdit;
+        } else if (content.startsWith('!analyze')) {
+          intentType = BotIntent.Analyze;
+        } else if (content.startsWith('!optimize')) {
+          intentType = BotIntent.Optimize;
+        } else {
+          intentType = BotIntent.Help;
+        }
+        await this.handleIntent(intentType, message);
+      },
+      30 // 30 second TTL
+    );
+
+    // If lock was not acquired, another instance is handling this message
+    if (lockAcquired === null) {
+      this.logger.debug(`Skipping message ${message.id} - already being processed by another instance`);
     }
-    await this.handleIntent(intentType, message);
   }
 
   // Intent handlers
