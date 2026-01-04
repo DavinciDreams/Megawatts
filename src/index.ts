@@ -9,6 +9,16 @@ import { MessageRouter } from './core/processing/messageRouter';
 import { DEFAULT_PIPELINE_CONFIG, IntentType, RiskLevel } from './core/processing/types';
 import { RedisConnectionManager } from './storage/database/redis';
 import { DistributedLock } from './utils/distributed-lock';
+import { ConversationalDiscordConfig } from './types/conversational';
+import {
+  createDiscordBotIntegration,
+  DiscordBotIntegration,
+  isCommandMessage,
+  extractCommandName,
+  extractCommandArgs,
+} from './discord/integration/botIntegration';
+import { ContextManager } from './ai/core/context-manager';
+import { TieredStorageManager } from './storage/tiered/tieredStorage';
 
 // Load environment variables FIRST
 dotenv.config();
@@ -184,18 +194,21 @@ class SelfEditingDiscordBot {
   private messageRouter: MessageRouter;
   private redis: RedisConnectionManager;
   private distributedLock: DistributedLock;
+  // Discord bot integration for conversational mode
+  private discordBotIntegration: DiscordBotIntegration | null = null;
 
   constructor(
     private token: string,
     logger?: UtilsLogger,
-    config?: BotConfig
+    config?: BotConfig,
+    private conversationalDiscordConfig?: ConversationalDiscordConfig
   ) {
     this.logger = logger || new UtilsLogger();
     this.config = config || new BotConfig();
     this.healthManager = new HealthManager();
     this.healthServer = new HealthServer(this.healthManager, this.config);
     this.messageRouter = new MessageRouter(DEFAULT_PIPELINE_CONFIG);
-
+    
     // Initialize Redis connection
     const redisConfig: any = {
       host: process.env.REDIS_HOST || 'localhost',
@@ -272,10 +285,163 @@ class SelfEditingDiscordBot {
       });
 
       await this.client.login(this.token);
+      
+      // Initialize Discord bot integration for conversational mode
+      await this.initializeDiscordIntegration(this.conversationalDiscordConfig);
+      
       this.logger.info('Bot initialization complete');
     } catch (error) {
       this.logger.error('Failed to initialize bot:', error as Error);
       throw error;
+    }
+  }
+
+  // Initialize Discord bot integration for conversational mode
+  private async initializeDiscordIntegration(conversationalDiscordConfig?: ConversationalDiscordConfig): Promise<void> {
+    if (!conversationalDiscordConfig) {
+      return;
+    }
+
+    try {
+      // Initialize ContextManager
+      const contextManager = new ContextManager(
+        {
+          maxMessagesPerConversation: conversationalDiscordConfig.contextWindow,
+          maxMessageAge: conversationalDiscordConfig.memory.mediumTermRetentionDays * 24 * 60 * 60 * 1000,
+          memory: {
+            maxMemories: 1000,
+            retention: conversationalDiscordConfig.memory.mediumTermRetentionDays * 24 * 60 * 60 * 1000,
+            indexing: true,
+          },
+          cleanup: {
+            enabled: true,
+            interval: 3600000, // 1 hour
+            maxAge: conversationalDiscordConfig.memory.longTermRetentionDays * 24 * 60 * 60 * 1000,
+          },
+        },
+        this.logger
+      );
+      
+      // Initialize TieredStorageManager with existing Redis connection and null for postgres
+      const tieredStorage = new TieredStorageManager(
+        null as any, // PostgresConnectionManager - bot doesn't have one
+        this.redis, // RedisConnectionManager
+        {
+          hot: {
+            enabled: true,
+            ttl: 3600, // 1 hour
+            maxSize: 10000,
+          },
+          warm: {
+            enabled: true,
+            retentionDays: conversationalDiscordConfig.memory.mediumTermRetentionDays,
+          },
+          cold: {
+            enabled: true,
+            retentionDays: conversationalDiscordConfig.memory.longTermRetentionDays,
+            compressionEnabled: true,
+          },
+          backup: {
+            enabled: false,
+            retentionDays: conversationalDiscordConfig.memory.longTermRetentionDays * 2,
+            schedule: '0 2 * * *', // Daily at 2 AM
+          },
+          migration: {
+            enabled: true,
+            intervalMinutes: 60,
+            batchSize: 100,
+          },
+        }
+      );
+      
+      // Initialize TieredStorageManager
+      await tieredStorage.initialize();
+      this.logger.info('TieredStorageManager initialized');
+      
+      this.discordBotIntegration = await createDiscordBotIntegration({
+        client: this.client,
+        config: conversationalDiscordConfig,
+        aiConfig: {
+          providers: {
+            openai: {
+              enabled: true,
+              apiKey: process.env.OPENAI_API_KEY || '',
+              timeout: parseInt(process.env.OPENAI_TIMEOUT || '30000'),
+              retries: parseInt(process.env.OPENAI_RETRY_ATTEMPTS || '3'),
+            },
+            anthropic: {
+              enabled: false,
+              apiKey: '',
+            },
+            local: {
+              enabled: false,
+              endpoint: 'http://localhost:11434/api',
+              modelPath: '',
+            },
+          },
+          routing: {
+            strategy: {
+              name: 'round-robin',
+              type: 'round_robin',
+            },
+            strategies: [],
+            rules: [],
+            loadBalancing: {
+              enabled: true,
+              strategy: 'round-robin',
+            },
+            healthCheck: {
+              enabled: true,
+              interval: 60000,
+              timeout: 5000,
+              retries: 3,
+            },
+          },
+          safety: {
+            enabled: true,
+            level: 'medium',
+          },
+          personalization: {
+            enabled: false,
+          },
+          formatting: {
+            enabled: true,
+          },
+          enhancements: {
+            enabled: false,
+          },
+          performance: {
+            maxConcurrentRequests: 10,
+            queueSize: 100,
+            timeoutMs: 30000,
+            retryAttempts: 3,
+          },
+          conversation: {
+            maxMessagesPerConversation: 100,
+            maxMessageAge: 86400000, // 24 hours
+            cleanup: {
+              enabled: true,
+              interval: 3600000, // 1 hour
+              maxAge: 604800000, // 7 days
+            },
+          },
+          memory: {
+            maxMemories: 1000,
+            retention: 604800000, // 7 days
+            indexing: true,
+          },
+        },
+        logger: this.logger,
+        contextManager,
+        tieredStorage,
+      });
+      
+      this.logger.info('Discord bot integration initialized', {
+        conversationalEnabled: conversationalDiscordConfig.enabled,
+        mode: conversationalDiscordConfig.mode,
+      });
+    } catch (error) {
+      this.logger.error('Failed to initialize Discord bot integration', error as Error);
     }
   }
 
@@ -333,7 +499,19 @@ class SelfEditingDiscordBot {
 
   // Message handling with intent recognition and distributed locking
   private async handleMessage(message: Message): Promise<void> {
-    // Early exit for non-command messages
+    // Check if conversational mode should handle this message
+    if (this.discordBotIntegration && this.discordBotIntegration.shouldUseConversationalMode(message)) {
+      // Handle through conversational integration
+      const response = await this.discordBotIntegration.processMessage(message);
+      
+      if (response) {
+        // Send the conversational response
+        await message.reply(response.content);
+      }
+      return;
+    }
+    
+    // Early exit for non-command messages (backward compatibility)
     if (!message.content.startsWith('!')) {
       this.logger.debug(`Ignoring non-command message: ${message.content}`);
       return;

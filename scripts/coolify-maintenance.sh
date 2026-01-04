@@ -122,6 +122,45 @@ record_task_result() {
 }
 
 # =============================================================================
+# Container Name Detection Functions
+# =============================================================================
+
+# Get container name based on Coolify naming convention
+get_container_name() {
+    local service_type="$1"
+    local service_name="${COOLIFY_SERVICE_NAME:-discord-bot}"
+    local environment="${COOLIFY_ENVIRONMENT:-staging}"
+    
+    # Try Coolify naming convention first
+    local coolify_name="${service_name}-${service_type}-${environment}"
+    
+    if docker ps --format "{{.Names}}" | grep -q "${coolify_name}"; then
+        echo "${coolify_name}"
+        return 0
+    fi
+    
+    # Fallback to old naming convention
+    local old_name="${service_name}_${service_type}_1"
+    
+    if docker ps --format "{{.Names}}" | grep -q "${old_name}"; then
+        echo "${old_name}"
+        return 0
+    fi
+    
+    # Fallback to alternative naming convention
+    local alt_name="${service_name}-${service_type}-1"
+    
+    if docker ps --format "{{.Names}}" | grep -q "${alt_name}"; then
+        echo "${alt_name}"
+        return 0
+    fi
+    
+    # Return empty if no container found
+    echo ""
+    return 1
+}
+
+# =============================================================================
 # Validation Functions
 # =============================================================================
 
@@ -228,15 +267,12 @@ backup_database() {
     log "INFO" "Performing database backup..."
     
     local backup_file="${LOG_DIR}/database-backup-$(date +%Y%m%d-%H%M%S).sql"
-    local container_name="discord-bot_postgres_1"
+    local container_name
+    container_name=$(get_container_name "postgres")
     
-    # Find PostgreSQL container
-    if ! docker ps --format "{{.Names}}" | grep -q "${container_name}"; then
-        container_name="discord-bot-postgres-1"
-        if ! docker ps --format "{{.Names}}" | grep -q "${container_name}"; then
-            record_task_result "Database Backup" "failed" "PostgreSQL container not found"
-            return 1
-        fi
+    if [[ -z "${container_name}" ]]; then
+        record_task_result "Database Backup" "failed" "PostgreSQL container not found"
+        return 1
     fi
     
     if [[ "${DRY_RUN}" == "true" ]]; then
@@ -278,15 +314,12 @@ optimize_database() {
     
     log "INFO" "Performing database optimization..."
     
-    local container_name="discord-bot_postgres_1"
+    local container_name
+    container_name=$(get_container_name "postgres")
     
-    # Find PostgreSQL container
-    if ! docker ps --format "{{.Names}}" | grep -q "${container_name}"; then
-        container_name="discord-bot-postgres-1"
-        if ! docker ps --format "{{.Names}}" | grep -q "${container_name}"; then
-            record_task_result "Database Optimization" "failed" "PostgreSQL container not found"
-            return 1
-        fi
+    if [[ -z "${container_name}" ]]; then
+        record_task_result "Database Optimization" "failed" "PostgreSQL container not found"
+        return 1
     fi
     
     if [[ "${DRY_RUN}" == "true" ]]; then
@@ -324,15 +357,12 @@ cleanup_cache() {
     
     log "INFO" "Performing cache cleanup..."
     
-    local container_name="discord-bot_redis_1"
+    local container_name
+    container_name=$(get_container_name "redis")
     
-    # Find Redis container
-    if ! docker ps --format "{{.Names}}" | grep -q "${container_name}"; then
-        container_name="discord-bot-redis-1"
-        if ! docker ps --format "{{.Names}}" | grep -q "${container_name}"; then
-            record_task_result "Cache Cleanup" "failed" "Redis container not found"
-            return 1
-        fi
+    if [[ -z "${container_name}" ]]; then
+        record_task_result "Cache Cleanup" "failed" "Redis container not found"
+        return 1
     fi
     
     if [[ "${DRY_RUN}" == "true" ]]; then
@@ -383,13 +413,13 @@ rotate_logs() {
     fi
     
     # Rotate Docker container logs
-    local containers=("discord-bot_app_1" "discord-bot_postgres_1" "discord-bot_redis_1" "discord-bot_nginx_1")
+    local service_types=("app" "postgres" "redis" "nginx")
     local rotated_logs=0
     
-    for container_pattern in "${containers[@]}"; do
+    for service_type in "${service_types[@]}"; do
         # Find actual container name
         local container_name
-        container_name=$(docker ps --format "{{.Names}}" | grep -E "${container_pattern}" | head -1 || echo "")
+        container_name=$(get_container_name "${service_type}")
         
         if [[ -n "${container_name}" ]]; then
             # Rotate container logs
@@ -503,11 +533,11 @@ optimize_performance() {
     fi
     
     # Optimize Docker containers
-    local containers=("discord-bot_app_1" "discord-bot_postgres_1" "discord-bot_redis_1")
+    local service_types=("app" "postgres" "redis")
     
-    for container_pattern in "${containers[@]}"; do
+    for service_type in "${service_types[@]}"; do
         local container_name
-        container_name=$(docker ps --format "{{.Names}}" | grep -E "${container_pattern}" | head -1 || echo "")
+        container_name=$(get_container_name "${service_type}")
         
         if [[ -n "${container_name}" ]]; then
             # Restart container to free up memory

@@ -231,6 +231,10 @@ services:
     environment:
       - COOLIFY_SERVICE_NAME=${COOLIFY_SERVICE_NAME:-discord-bot}-postgres
       - COOLIFY_ENVIRONMENT=${COOLIFY_ENVIRONMENT:-staging}
+      # PostgreSQL configuration file selection:
+      # - production: postgresql.conf
+      # - staging: postgresql-staging.conf
+      - POSTGRES_CONFIG_FILE=postgresql${COOLIFY_ENVIRONMENT:+-${COOLIFY_ENVIRONMENT}}.conf
       - POSTGRES_DB=${DB_NAME:-discord_bot_${COOLIFY_ENVIRONMENT:-staging}}
       - POSTGRES_USER=${DB_USER:-discord_bot}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
@@ -249,7 +253,7 @@ services:
       - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/postgres/logs:/var/log/postgresql
       - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/${COOLIFY_SERVICE_NAME:-discord-bot}/postgres/backups:/var/backups/postgresql
       - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/shared/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-      - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/shared/postgres/postgresql-${COOLIFY_ENVIRONMENT:-staging}.conf:/etc/postgresql/postgresql.conf:ro
+      - ${COOLIFY_STORAGE_PATH:-/var/lib/coolify}/shared/postgres/${POSTGRES_CONFIG_FILE:-postgresql-staging.conf}:/etc/postgresql/postgresql.conf:ro
     
     # Coolify-specific network configurations
     networks:

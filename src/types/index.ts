@@ -3,6 +3,9 @@
 // Re-export error types
 export * from '../core/errors/types';
 
+// Re-export conversational types
+export * from './conversational';
+
 export interface BotConfig {
   token: string;
   clientId: string;

@@ -399,6 +399,54 @@ monitor_deployment() {
 }
 
 # =============================================================================
+# Database Initialization Functions
+# =============================================================================
+
+# Initialize database after deployment
+initialize_database() {
+    log "INFO" "Initializing database..."
+    
+    local setup_script="${SCRIPT_DIR}/setup-coolify-databases.sh"
+    
+    if [[ ! -f "${setup_script}" ]]; then
+        log "ERROR" "Database setup script not found: ${setup_script}"
+        return 1
+    fi
+    
+    if [[ "${DRY_RUN}" == "true" ]]; then
+        log "INFO" "[DRY RUN] Would initialize database"
+        return 0
+    fi
+    
+    # Export required environment variables for database setup
+    export DB_HOST="${DB_HOST:-localhost}"
+    export DB_PORT="${DB_PORT:-5432}"
+    export DB_USER="${DB_USER:-discord_bot}"
+    export DB_PASSWORD="${DB_PASSWORD}"
+    export DB_NAME="${DB_NAME:-discord_bot_${ENVIRONMENT}}"
+    export REDIS_HOST="${REDIS_HOST:-localhost}"
+    export REDIS_PORT="${REDIS_PORT:-6379}"
+    export REDIS_PASSWORD="${REDIS_PASSWORD}"
+    export ENVIRONMENT="${ENVIRONMENT}"
+    
+    # Run database setup script
+    if bash "${setup_script}"; then
+        log "SUCCESS" "Database initialized successfully"
+        return 0
+    else
+        log "ERROR" "Database initialization failed"
+        
+        # Attempt rollback if enabled
+        if [[ "${ROLLBACK_ON_FAILURE}" == "true" && -n "${DEPLOYMENT_ID}" ]]; then
+            log "WARN" "Attempting rollback due to database initialization failure..."
+            rollback_deployment "${DEPLOYMENT_ID}"
+        fi
+        
+        return 1
+    fi
+}
+
+# =============================================================================
 # Post-Deployment Functions
 # =============================================================================
 
@@ -667,6 +715,9 @@ main() {
     
     # Deployment phase
     trigger_deployment
+    
+    # Database initialization phase
+    initialize_database
     
     # Monitoring phase
     if monitor_deployment; then

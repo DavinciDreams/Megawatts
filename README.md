@@ -32,7 +32,48 @@ The following advanced features have been implemented on the `feature/advanced-f
 - **🛡️ Self-healing Mechanisms**: Automatic recovery from failures with service restart automation, configuration rollback, module reload, cache rebuild, graceful degradation, emergency mode activation, and circuit breaker pattern implementation
 - **⚡ Advanced Caching**: Multi-level caching system with L1 (memory), L2 (Redis), and L3 (CDN) layers, intelligent cache warming, predictive pre-fetching, cache invalidation strategies, and configurable eviction policies (LRU, LFU, FIFO)
 
-### 🏗️ Architecture Highlights
+### 💬 Conversational Discord Mode
+
+The Conversational Discord mode transforms the bot into an intelligent, emotionally-aware conversational assistant that can engage naturally with users across Discord servers.
+
+#### Key Capabilities
+
+- **🤖 AI-Powered Conversations**: Context-aware responses using advanced AI models (OpenAI, Anthropic) with configurable personality and tone
+- **💭 Emotional Intelligence**: Real-time sentiment analysis, emotion detection, and mood inference to provide empathetic and appropriate responses
+- **🧠 Context Management**: Multi-tiered conversation context with configurable context windows, cross-channel awareness, and temporal context tracking
+- **🛡️ Safety & Moderation**: Content filtering, configurable moderation levels, emergency stop functionality, and rate limiting for safe interactions
+- **🌍 Multilingual Support**: Automatic language detection and support for multiple languages (configurable)
+- **⚔️ Conflict De-escalation**: Automatic detection of conflict situations with intelligent de-escalation strategies
+- **🎭 Adaptive Responses**: Dynamic response adaptation based on user preferences, emotional state, and conversation history
+- **📊 Memory Management**: Short-term, medium-term, and optional long-term memory with vector search capabilities
+
+#### Quick Start
+
+Enable conversational mode in your `.env` file:
+
+```env
+# Enable conversational Discord mode
+DISCORD_CONVERSATIONAL_ENABLED=true
+
+# Configure response settings
+DISCORD_CONVERSATIONAL_RESPONSE_CHANNEL=bot-responses
+DISCORD_CONVERSATIONAL_CONTEXT_WINDOW=50
+DISCORD_CONVERSATIONAL_MAX_RESPONSE_LENGTH=2000
+
+# Configure personality
+DISCORD_CONVERSATIONAL_TONE=friendly
+DISCORD_CONVERSATIONAL_EMPATHY_LEVEL=0.7
+DISCORD_CONVERSATIONAL_EMOTIONAL_INTELLIGENCE=true
+
+# Configure safety
+DISCORD_CONVERSATIONAL_CONTENT_FILTERING=true
+DISCORD_CONVERSATIONAL_MODERATION_LEVEL=moderate
+DISCORD_CONVERSATIONAL_EMERGENCY_STOP_ENABLED=true
+```
+
+For detailed configuration options and advanced features, see the [Conversational Discord Guide](docs/CONVERSATIONAL_DISCORD.md).
+
+### ️ Architecture Highlights
 - **Modular Design**: Clean separation between immutable core and modifiable components
 - **Safety-First**: All modifications occur within strict validation boundaries
 - **Scalable Infrastructure**: Container-based deployment with auto-scaling
@@ -143,6 +184,7 @@ src/
 
 ## 📚 Documentation
 
+- **[Conversational Discord Guide](docs/CONVERSATIONAL_DISCORD.md)** - Comprehensive guide to conversational Discord mode
 - **[Channel Filter Guide](docs/CHANNEL_FILTER_GUIDE.md)** - Comprehensive guide to channel filtering feature
 - **[Channel Filter Quick Reference](docs/CHANNEL_FILTER_QUICK_REFERENCE.md)** - Quick setup and configuration reference
 - **[Development Guidelines](CONTRIBUTING.md)** - Contributing guidelines and development workflow

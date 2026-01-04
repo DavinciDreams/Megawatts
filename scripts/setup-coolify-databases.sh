@@ -258,6 +258,10 @@ run_migrations() {
         return 0
     fi
     
+    # Count migration files
+    local migration_count=$(find "$migrations_dir" -name "*.sql" -type f | wc -l)
+    log "Found $migration_count migration file(s) in $migrations_dir"
+    
     # Create migrations table if it doesn't exist
     PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "
         CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -265,6 +269,11 @@ run_migrations() {
             applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         );
     " || error "Failed to create migrations table"
+    
+    # Track migration results
+    local migrations_applied=0
+    local migrations_skipped=0
+    local migrations_failed=0
     
     # Run migration files in order
     for migration_file in "$migrations_dir"/*.sql; do
@@ -277,17 +286,34 @@ run_migrations() {
             
             if [ -z "$applied" ]; then
                 log "Applying migration: $migration_name"
-                PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$migration_file" || error "Failed to apply migration: $migration_name"
                 
-                # Record migration as applied
-                PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "INSERT INTO schema_migrations (version) VALUES ('$migration_name');" || error "Failed to record migration"
-                
-                log "Migration applied successfully: $migration_name"
+                if PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$migration_file"; then
+                    # Record migration as applied
+                    PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "INSERT INTO schema_migrations (version) VALUES ('$migration_name');" || error "Failed to record migration"
+                    
+                    log "Migration applied successfully: $migration_name"
+                    ((migrations_applied++))
+                else
+                    log "ERROR" "Failed to apply migration: $migration_name"
+                    ((migrations_failed++))
+                    
+                    # Continue with other migrations but track the failure
+                    continue
+                fi
             else
                 log "Migration already applied: $migration_name"
+                ((migrations_skipped++))
             fi
         fi
     done
+    
+    # Report migration results
+    log "Migration summary: $migrations_applied applied, $migrations_skipped skipped, $migrations_failed failed"
+    
+    if [ $migrations_failed -gt 0 ]; then
+        log "ERROR" "Some migrations failed. Please review the logs above and fix any errors."
+        return 1
+    fi
     
     log "All migrations completed successfully"
 }
@@ -301,14 +327,27 @@ health_check_postgres() {
     # Test basic connectivity
     PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -c "SELECT 1;" &> /dev/null || error "PostgreSQL health check failed"
     
-    # Test table existence
-    local tables=("users" "guilds" "conversations" "plugins" "analytics")
-    for table in "${tables[@]}"; do
+    # Test table existence - core tables
+    local core_tables=("users" "guilds" "conversations" "plugins" "analytics")
+    for table in "${core_tables[@]}"; do
         local exists
         exists=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT 1 FROM information_schema.tables WHERE table_name='$table'" 2>/dev/null || echo "")
         
         if [ -z "$exists" ]; then
-            error "Required table not found: $table"
+            error "Required core table not found: $table"
+        fi
+    done
+    
+    # Test table existence - tiered storage tables
+    local tiered_tables=("tiered_storage_warm" "tiered_storage_cold" "tiered_storage_backup" "tiered_storage_metadata" "tier_migration_log")
+    for table in "${tiered_tables[@]}"; do
+        local exists
+        exists=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -tAc "SELECT 1 FROM information_schema.tables WHERE table_name='$table'" 2>/dev/null || echo "")
+        
+        if [ -z "$exists" ]; then
+            log "WARN" "Tiered storage table not found: $table (may not have been migrated yet)"
+        else
+            log "INFO" "Tiered storage table verified: $table"
         fi
     done
     
