@@ -5,13 +5,19 @@
  * support for OpenAI, Anthropic, and local models.
  */
 
-import { 
-  AIProvider, 
-  AIModel, 
-  AICapability, 
-  ProviderConfig, 
+import {
+  AIProvider,
+  AIModel,
+  AICapability,
+  ProviderConfig,
   RateLimit,
-  ModelCapability 
+  ModelCapability,
+  AIRequest,
+  AIMessage,
+  AIResponse,
+  TokenUsage,
+  ResponseMetadata,
+  ValidationResult
 } from '../../types/ai';
 import { Logger } from '../../utils/logger';
 
@@ -295,7 +301,7 @@ export class OpenAIProvider extends BaseAIProvider {
         provider: 'openai',
         requestId: request.id,
         processingTime: Date.now() - request.timestamp.getTime()
-      }
+      } as ResponseMetadata
     };
   }
 }
@@ -741,63 +747,10 @@ export class LocalModelProvider extends BaseAIProvider {
 // SUPPORTING TYPES
 // ============================================================================
 
-export interface AIRequest {
-  id: string;
-  model?: string;
-  messages: AIMessage[];
-  maxTokens?: number;
-  temperature?: number;
-  topP?: number;
-  frequencyPenalty?: number;
-  presencePenalty?: number;
-  functions?: any[];
-  function_call?: any;
-  tools?: any[];
-  tool_choice?: any;
-  timestamp: Date;
-  userId?: string;
-  conversationId?: string;
-}
-
-export interface AIMessage {
-  role: 'system' | 'user' | 'assistant' | 'function' | 'tool';
-  content: string;
-  name?: string;
-  function_call?: any;
-  tool_calls?: any[];
-  tool_call_id?: string;
-}
-
-export interface AIResponse {
-  id: string;
-  model: string;
-  created: Date;
-  content: string;
-  role: string;
-  finishReason?: string;
-  usage: TokenUsage;
-  functionCall?: any;
-  toolCalls?: any[];
-  metadata: ResponseMetadata;
-}
-
-export interface TokenUsage {
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
-}
-
-export interface ResponseMetadata {
+export interface ProviderResponseMetadata {
   provider: string;
   requestId: string;
   processingTime: number;
-  [key: string]: any;
-}
-
-export interface ValidationResult {
-  isValid: boolean;
-  errors: string[];
-  warnings: string[];
 }
 
 export interface AIError {

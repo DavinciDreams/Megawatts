@@ -583,7 +583,649 @@ Start a mock server for testing:
 npm run api:mock
 ```
 
+## Conversational Discord Mode
+
+### GET /conversational/config
+
+Get current conversational Discord configuration.
+
+**Response**:
+```json
+{
+  "enabled": true,
+  "mode": "conversational",
+  "responseChannel": "bot-responses",
+  "responseChannelType": "same",
+  "contextWindow": 50,
+  "maxTokens": 2000,
+  "temperature": 0.7,
+  "tone": "friendly",
+  "formality": "casual",
+  "verbosity": "balanced",
+  "personality": {
+    "id": "megawatts-default",
+    "name": "Megawatts",
+    "description": "A helpful and intelligent Discord assistant",
+    "systemPrompt": "You are Megawatts, a helpful and intelligent Discord assistant."
+  },
+  "emotionalIntelligence": {
+    "enabled": true,
+    "sentimentAnalysis": true,
+    "emotionDetection": true,
+    "empatheticResponses": true,
+    "conflictDeescalation": true,
+    "moodAdaptation": true,
+    "emotionInfluence": 0.7
+  },
+  "memory": {
+    "shortTermEnabled": true,
+    "shortTermTTL": 3600,
+    "mediumTermEnabled": true,
+    "mediumTermRetentionDays": 7,
+    "longTermEnabled": false,
+    "vectorSearchEnabled": false
+  },
+  "multilingual": {
+    "enabled": false,
+    "defaultLanguage": "en",
+    "autoDetectLanguage": false
+  },
+  "safety": {
+    "enabled": true,
+    "contentFiltering": true,
+    "moderationLevel": "moderate",
+    "blockHarmfulContent": true,
+    "blockPersonalInfo": true,
+    "emergencyStop": true,
+    "emergencyStopPhrases": ["stop", "emergency stop", "halt", "abort"],
+    "maxResponseLength": 2000
+  },
+  "rateLimiting": {
+    "enabled": true,
+    "messagesPerMinute": 10,
+    "messagesPerHour": 100,
+    "messagesPerDay": 500,
+    "perUserLimit": true,
+    "perChannelLimit": true,
+    "cooldownPeriod": 5
+  },
+  "features": {
+    "crossChannelAwareness": true,
+    "temporalContext": true,
+    "userLearning": false,
+    "adaptiveResponses": true,
+    "toolCalling": false,
+    "codeExecution": false,
+    "selfEditing": false
+  }
+}
+```
+
+### PUT /conversational/config
+
+Update conversational Discord configuration.
+
+**Request Body**:
+```json
+{
+  "enabled": true,
+  "mode": "conversational",
+  "tone": "friendly",
+  "temperature": 0.7,
+  "contextWindow": 50,
+  "emotionalIntelligence": {
+    "enabled": true,
+    "emotionInfluence": 0.7
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "enabled": true,
+    "mode": "conversational",
+    "tone": "friendly",
+    "temperature": 0.7,
+    "contextWindow": 50
+  },
+  "message": "Configuration updated successfully",
+  "timestamp": "2023-12-15T10:30:00.000Z"
+}
+```
+
+### POST /conversational/message
+
+Send a message to the conversational Discord mode and get a response.
+
+**Request Body**:
+```json
+{
+  "message": "Hello! How are you today?",
+  "userId": "user_123",
+  "channelId": "channel_456",
+  "guildId": "guild_789",
+  "conversationId": "user_123:channel_456"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "content": "I'm doing great, thanks for asking! How can I help you today?",
+    "tone": "friendly",
+    "emotion": "joy",
+    "metadata": {
+      "conversationId": "user_123:channel_456",
+      "provider": "openai",
+      "model": "gpt-4-turbo",
+      "tokensUsed": 45,
+      "processingTime": 1250,
+      "emotionalAdaptations": true,
+      "sentiment": {
+        "score": 0.6,
+        "magnitude": 0.6,
+        "confidence": 0.8
+      },
+      "emotion": {
+        "primary": "joy",
+        "confidence": 0.7
+      }
+    }
+  },
+  "timestamp": "2023-12-15T10:30:00.000Z"
+}
+```
+
+### POST /conversational/conversation/start
+
+Start a new conversation.
+
+**Request Body**:
+```json
+{
+  "userId": "user_123",
+  "channelId": "channel_456",
+  "guildId": "guild_789"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "conversationId": "user_123:channel_456",
+    "userId": "user_123",
+    "channelId": "channel_456",
+    "guildId": "guild_789",
+    "createdAt": "2023-12-15T10:30:00.000Z"
+  },
+  "message": "Conversation started successfully",
+  "timestamp": "2023-12-15T10:30:00.000Z"
+}
+```
+
+### POST /conversational/conversation/end
+
+End an active conversation.
+
+**Request Body**:
+```json
+{
+  "conversationId": "user_123:channel_456",
+  "reason": "user_request"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "conversationId": "user_123:channel_456",
+    "endedAt": "2023-12-15T10:35:00.000Z",
+    "messageCount": 15,
+    "duration": 300
+  },
+  "message": "Conversation ended successfully",
+  "timestamp": "2023-12-15T10:35:00.000Z"
+}
+```
+
+### GET /conversational/conversation/{conversationId}
+
+Get conversation details and history.
+
+**Query Parameters**:
+- `limit` (optional): Number of messages to return (default: 50, max: 100)
+- `offset` (optional): Number of messages to skip (default: 0)
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "conversationId": "user_123:channel_456",
+    "userId": "user_123",
+    "channelId": "channel_456",
+    "guildId": "guild_789",
+    "createdAt": "2023-12-15T10:30:00.000Z",
+    "lastActive": "2023-12-15T10:35:00.000Z",
+    "messageCount": 15,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello! How are you today?",
+        "timestamp": "2023-12-15T10:30:00.000Z"
+      },
+      {
+        "role": "assistant",
+        "content": "I'm doing great, thanks for asking!",
+        "timestamp": "2023-12-15T10:30:01.000Z"
+      }
+    ],
+    "emotionalContext": {
+      "sentiment": {
+        "score": 0.6,
+        "magnitude": 0.6,
+        "confidence": 0.8
+      },
+      "emotion": {
+        "primary": "joy",
+        "confidence": 0.7
+      },
+      "mood": {
+        "mood": "happy",
+        "intensity": 0.8,
+        "confidence": 0.7
+      }
+    }
+  },
+  "timestamp": "2023-12-15T10:35:00.000Z"
+}
+```
+
+### GET /conversational/conversations
+
+Get all active conversations with optional filtering.
+
+**Query Parameters**:
+- `userId` (optional): Filter by user ID
+- `channelId` (optional): Filter by channel ID
+- `guildId` (optional): Filter by guild ID
+- `status` (optional): Filter by status (active, ended)
+- `limit` (optional): Number of conversations to return (default: 50, max: 100)
+- `offset` (optional): Number of conversations to skip (default: 0)
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "conversations": [
+      {
+        "conversationId": "user_123:channel_456",
+        "userId": "user_123",
+        "channelId": "channel_456",
+        "guildId": "guild_789",
+        "createdAt": "2023-12-15T10:30:00.000Z",
+        "lastActive": "2023-12-15T10:35:00.000Z",
+        "messageCount": 15,
+        "status": "active"
+      }
+    ],
+    "pagination": {
+      "total": 150,
+      "limit": 50,
+      "offset": 0,
+      "has_more": true
+    }
+  },
+  "timestamp": "2023-12-15T10:35:00.000Z"
+}
+```
+
+### POST /conversational/emotional/analyze
+
+Analyze emotional content of a message.
+
+**Request Body**:
+```json
+{
+  "text": "I'm so happy today!",
+  "history": [
+    {
+      "role": "user",
+      "content": "How are you?",
+      "timestamp": "2023-12-15T10:29:00.000Z"
+    }
+  ]
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "sentiment": {
+      "score": 0.8,
+      "magnitude": 0.8,
+      "confidence": 0.6,
+      "approach": "rule-based"
+    },
+    "emotion": {
+      "primary": "joy",
+      "secondary": undefined,
+      "emotions": {
+        "joy": 1.0
+      },
+      "confidence": 0.5
+    },
+    "mood": {
+      "mood": "happy",
+      "intensity": 0.8,
+      "confidence": 0.6,
+      "factors": ["positive sentiment"]
+    },
+    "conflict": {
+      "isConflict": false,
+      "severity": "low",
+      "confidence": 0.0,
+      "indicators": []
+    }
+  },
+  "timestamp": "2023-12-15T10:30:00.000Z"
+}
+```
+
+### POST /conversational/emergency/stop
+
+Trigger emergency stop for a conversation.
+
+**Request Body**:
+```json
+{
+  "conversationId": "user_123:channel_456",
+  "reason": "user_request",
+  "phrase": "emergency stop"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "conversationId": "user_123:channel_456",
+    "stoppedAt": "2023-12-15T10:35:00.000Z",
+    "reason": "user_request",
+    "phrase": "emergency stop"
+  },
+  "message": "Emergency stop triggered successfully",
+  "timestamp": "2023-12-15T10:35:00.000Z"
+}
+```
+
+### GET /conversational/analytics
+
+Get analytics for conversational Discord mode.
+
+**Query Parameters**:
+- `period` (optional): Time period (1d, 7d, 30d, 90d)
+- `metrics` (optional): Specific metrics to return (conversations, messages, emotions, conflicts)
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "period": "7d",
+    "conversations": {
+      "total": 1500,
+      "active": 250,
+      "ended": 1250,
+      "avgDuration": 300
+    },
+    "messages": {
+      "total": 15000,
+      "userMessages": 7500,
+      "botMessages": 7500,
+      "avgResponseTime": 1250
+    },
+    "emotions": {
+      "joy": 0.4,
+      "neutral": 0.3,
+      "sadness": 0.1,
+      "anger": 0.05,
+      "fear": 0.05,
+      "surprise": 0.1
+    },
+    "conflicts": {
+      "detected": 25,
+      "deescalated": 20,
+      "escalated": 5
+    },
+    "performance": {
+      "avgTokensPerMessage": 45,
+      "totalTokensUsed": 675000,
+      "avgProcessingTime": 1250
+    }
+  },
+  "timestamp": "2023-12-15T10:35:00.000Z"
+}
+```
+
+### WebSocket Events
+
+#### conversational.message
+
+New message in conversation:
+
+```json
+{
+  "type": "conversational.message",
+  "data": {
+    "conversationId": "user_123:channel_456",
+    "message": {
+      "role": "user",
+      "content": "Hello!",
+      "timestamp": "2023-12-15T10:30:00.000Z"
+    }
+  }
+}
+```
+
+#### conversational.response
+
+Bot response generated:
+
+```json
+{
+  "type": "conversational.response",
+  "data": {
+    "conversationId": "user_123:channel_456",
+    "response": {
+      "content": "I'm doing great!",
+      "tone": "friendly",
+      "emotion": "joy",
+      "tokensUsed": 45,
+      "processingTime": 1250
+    }
+  }
+}
+```
+
+#### conversational.emotional_analysis
+
+Emotional analysis completed:
+
+```json
+{
+  "type": "conversational.emotional_analysis",
+  "data": {
+    "conversationId": "user_123:channel_456",
+    "emotionalContext": {
+      "sentiment": {
+        "score": 0.6,
+        "magnitude": 0.6,
+        "confidence": 0.8
+      },
+      "emotion": {
+        "primary": "joy",
+        "confidence": 0.7
+      },
+      "mood": {
+        "mood": "happy",
+        "intensity": 0.8,
+        "confidence": 0.7
+      }
+    }
+  }
+}
+```
+
+#### conversational.conflict_detected
+
+Conflict detected in conversation:
+
+```json
+{
+  "type": "conversational.conflict_detected",
+  "data": {
+    "conversationId": "user_123:channel_456",
+    "conflict": {
+      "isConflict": true,
+      "severity": "medium",
+      "confidence": 0.8,
+      "indicators": ["aggression", "negative sentiment"]
+    }
+  }
+}
+```
+
+#### conversational.emergency_stop
+
+Emergency stop triggered:
+
+```json
+{
+  "type": "conversational.emergency_stop",
+  "data": {
+    "conversationId": "user_123:channel_456",
+    "stoppedAt": "2023-12-15T10:35:00.000Z",
+    "reason": "user_request",
+    "phrase": "emergency stop"
+  }
+}
+```
+
+## Type Definitions
+
+### ConversationalDiscordConfig
+
+```typescript
+interface ConversationalDiscordConfig {
+  enabled: boolean;
+  mode: 'conversational' | 'command' | 'hybrid';
+  responseChannel: string | null;
+  responseChannelType: 'same' | 'dm' | 'custom';
+  contextWindow: number;
+  maxTokens: number;
+  temperature: number;
+  personality: PersonalityProfile;
+  tone: 'friendly' | 'professional' | 'casual' | 'playful';
+  formality: 'formal' | 'casual' | 'adaptive';
+  verbosity: 'concise' | 'detailed' | 'balanced' | 'adaptive';
+  emotionalIntelligence: EmotionalIntelligenceConfig;
+  memory: MemoryConfig;
+  multilingual: MultilingualConfig;
+  safety: SafetyConfig;
+  rateLimiting: RateLimitingConfig;
+  features: ConversationalFeatures;
+}
+```
+
+### ConversationResponse
+
+```typescript
+interface ConversationResponse {
+  content: string;
+  tone: 'friendly' | 'professional' | 'casual' | 'playful' | 'adaptive';
+  emotion?: string;
+  metadata?: Record<string, unknown>;
+}
+```
+
+### EmotionalContext
+
+```typescript
+interface EmotionalContext {
+  sentiment: SentimentAnalysis;
+  emotion: EmotionDetection;
+  mood: MoodInference;
+  conflict?: ConflictDetection;
+}
+```
+
+### SentimentAnalysis
+
+```typescript
+interface SentimentAnalysis {
+  score: number; // -1 to 1
+  magnitude: number; // 0 to 1
+  confidence: number; // 0 to 1
+  approach: 'rule-based' | 'ml' | 'contextual';
+}
+```
+
+### EmotionDetection
+
+```typescript
+interface EmotionDetection {
+  primary: string;
+  secondary?: string;
+  emotions: Record<string, number>;
+  confidence: number;
+}
+```
+
+### MoodInference
+
+```typescript
+interface MoodInference {
+  mood: string;
+  intensity: number; // 0 to 1
+  confidence: number;
+  factors: string[];
+}
+```
+
+### ConflictDetection
+
+```typescript
+interface ConflictDetection {
+  isConflict: boolean;
+  severity: 'low' | 'medium' | 'high';
+  confidence: number;
+  indicators: string[];
+}
+```
+
 ## Changelog
+
+### Version 1.2.0
+
+- Added conversational Discord mode endpoints
+- Implemented emotional intelligence APIs
+- Added conversation management endpoints
+- Added analytics for conversational features
+- Added WebSocket events for real-time updates
 
 ### Version 1.0.0
 
@@ -592,12 +1234,12 @@ npm run api:mock
 - Added self-editing management endpoints
 - Added analytics and monitoring APIs
 
-### Version 1.1.0 (Planned)
+### Version 1.3.0 (Planned)
 
-- Enhanced WebSocket API
-- Added batch operations
-- Improved error handling
-- Added API versioning
+- Enhanced conversational analytics
+- Added batch message processing
+- Improved emotional intelligence accuracy
+- Added user preference management
 
 ## Support
 
