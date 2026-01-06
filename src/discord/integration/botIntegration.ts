@@ -18,6 +18,7 @@ import { Logger } from '../../utils/logger';
 import { DiscordContextManager } from '../context/DiscordContextManager';
 import { ContextManager } from '../../ai/core/context-manager';
 import { TieredStorageManager } from '../../storage/tiered/tieredStorage';
+import { OpenAIProvider, AnthropicProvider, LocalModelProvider } from '../../ai/core/ai-provider';
 
 // ============================================================================
 // INTEGRATION INTERFACE
@@ -275,19 +276,8 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       );
     }
 
-    // Initialize DiscordContextManager if not provided
-    if (!this.discordContextManager) {
-      this.discordContextManager = new DiscordContextManager(
-        this.config,
-        this.contextManager,
-        this.conversationManager!,
-        this.tieredStorage,
-        this.logger
-      );
-      this.logger.debug('DiscordContextManager initialized');
-    }
-
     // Initialize ConversationManager if not provided
+    // IMPORTANT: This must be initialized BEFORE DiscordContextManager because DiscordContextManager depends on it
     if (!this.conversationManager) {
       const conversationManagerConfig: ConversationManagerConfig = {
         maxMessagesPerConversation: this.config.contextWindow,
@@ -304,6 +294,19 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       this.logger.debug('ConversationManager initialized');
     }
 
+    // Initialize DiscordContextManager if not provided
+    // IMPORTANT: This must be initialized AFTER ConversationManager because it depends on it
+    if (!this.discordContextManager) {
+      this.discordContextManager = new DiscordContextManager(
+        this.config,
+        this.contextManager,
+        this.conversationManager!,
+        this.tieredStorage,
+        this.logger
+      );
+      this.logger.debug('DiscordContextManager initialized');
+    }
+
     // Initialize AIProviderRouter if not provided
     if (!this.aiProviderRouter) {
       this.aiProviderRouter = new ConversationalAIProviderRouter(
@@ -311,6 +314,9 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
         this.logger
       );
       this.logger.debug('ConversationalAIProviderRouter initialized');
+      
+      // Register AI providers based on configuration
+      this.registerAIProviders();
     }
 
     // Initialize EmotionalIntelligenceEngine if not provided
@@ -344,6 +350,69 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       );
       this.logger.debug('DiscordConversationHandler initialized');
     }
+  }
+
+  /**
+   * Register AI providers with the router based on configuration
+   */
+  private registerAIProviders(): void {
+    if (!this.aiProviderRouter) {
+      this.logger.warn('Cannot register providers - router not initialized');
+      return;
+    }
+
+    const { providers } = this.aiConfig;
+
+    // Register OpenAI provider if configured
+    if (providers?.openai?.enabled && providers.openai.apiKey) {
+      const openaiProvider = new OpenAIProvider(
+        {
+          apiKey: providers.openai.apiKey,
+          endpoint: providers.openai.endpoint,
+          timeout: providers.openai.timeout,
+          retries: providers.openai.retries,
+        },
+        this.logger
+      );
+      this.aiProviderRouter.registerProvider('openai', openaiProvider);
+      this.logger.info('OpenAI provider registered');
+    }
+
+    // Register Anthropic provider if configured
+    if (providers?.anthropic?.enabled && providers.anthropic.apiKey) {
+      const anthropicProvider = new AnthropicProvider(
+        {
+          apiKey: providers.anthropic.apiKey,
+          endpoint: providers.anthropic.endpoint,
+          timeout: providers.anthropic.timeout,
+          retries: providers.anthropic.retries,
+        },
+        this.logger
+      );
+      this.aiProviderRouter.registerProvider('anthropic', anthropicProvider);
+      this.logger.info('Anthropic provider registered');
+    }
+
+    // Register Local model provider if configured
+    if (providers?.local?.enabled) {
+      const localProvider = new LocalModelProvider(
+        {
+          endpoint: providers.local.endpoint,
+          modelPath: providers.local.modelPath,
+          timeout: providers.local.timeout,
+          retries: providers.local.retries,
+        },
+        this.logger
+      );
+      this.aiProviderRouter.registerProvider('local', localProvider);
+      this.logger.info('Local model provider registered');
+    }
+
+    const registeredProviders = this.aiProviderRouter.getProviders();
+    this.logger.info('AI providers registered', {
+      count: registeredProviders.size,
+      providers: Array.from(registeredProviders.keys()),
+    });
   }
 
   /**

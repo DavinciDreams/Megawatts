@@ -773,6 +773,12 @@ export class RetentionPolicyManager {
    * Creates necessary database tables for retention policies
    */
   private async createTables(): Promise<void> {
+    // Skip table creation if postgres is not available
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL connection not available, skipping retention policy table creation. Only hot tier (Redis) will be used.');
+      return;
+    }
+
     const tables = [
       `CREATE TABLE IF NOT EXISTS retention_policies (
         id VARCHAR(255) PRIMARY KEY,

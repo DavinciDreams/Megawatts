@@ -150,6 +150,7 @@ export class ConversationalConfigManager {
         moderationLevel: process.env.DISCORD_CONVERSATIONAL_MODERATION_LEVEL as any,
       };
     }
+    // Handle emergency stop configuration
     if (process.env.DISCORD_CONVERSATIONAL_EMERGENCY_STOP_ENABLED !== undefined) {
       overrides.safety = {
         ...overrides.safety,
@@ -161,6 +162,10 @@ export class ConversationalConfigManager {
         ...overrides.safety,
         emergencyStopPhrases: process.env.DISCORD_CONVERSATIONAL_EMERGENCY_STOP_PHRASES.split(','),
       };
+    }
+    // Ensure default emergency stop phrases are included when emergency stop is enabled
+    if (overrides.safety?.emergencyStop && !overrides.safety.emergencyStopPhrases) {
+      overrides.safety.emergencyStopPhrases = ['stop', 'emergency stop', 'halt', 'abort'];
     }
 
     return overrides;
@@ -284,7 +289,7 @@ export class ConversationalConfigManager {
     }
 
     // Validate verbosity
-    const validVerbosities = ['concise', 'normal', 'detailed', 'adaptive'];
+    const validVerbosities = ['concise', 'normal', 'detailed', 'balanced', 'adaptive'];
     if (!validVerbosities.includes(config.verbosity)) {
       throw new Error(`Invalid verbosity: ${config.verbosity}. Must be one of: ${validVerbosities.join(', ')}`);
     }
@@ -337,11 +342,6 @@ export class ConversationalConfigManager {
     // Validate emergency stop phrases
     if (!config.safety.emergencyStopPhrases || config.safety.emergencyStopPhrases.length === 0) {
       throw new Error('At least one emergency stop phrase must be configured');
-    }
-
-    // Validate features array
-    if (!Array.isArray(config.features)) {
-      throw new Error('Features must be an array');
     }
   }
 
@@ -511,7 +511,7 @@ export class ConversationalConfigManager {
   /**
    * Get configured tone
    */
-  getTone(): 'professional' | 'casual' | 'friendly' | 'adaptive' {
+  getTone(): 'professional' | 'casual' | 'friendly' | 'playful' | 'adaptive' {
     return this.config.tone;
   }
 

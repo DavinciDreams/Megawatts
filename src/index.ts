@@ -10,6 +10,7 @@ import { DEFAULT_PIPELINE_CONFIG, IntentType, RiskLevel } from './core/processin
 import { RedisConnectionManager } from './storage/database/redis';
 import { DistributedLock } from './utils/distributed-lock';
 import { ConversationalDiscordConfig } from './types/conversational';
+import { conversationalConfigManager } from './config/conversationalConfigManager';
 import {
   createDiscordBotIntegration,
   DiscordBotIntegration,
@@ -22,6 +23,11 @@ import { TieredStorageManager } from './storage/tiered/tieredStorage';
 
 // Load environment variables FIRST
 dotenv.config();
+
+// Reload conversational config manager after loading environment variables
+// This is necessary because the singleton is created before dotenv.config() is called
+conversationalConfigManager.reload();
+console.log('[DEBUG] Reloaded conversational config after dotenv');
 
 // Debug: Log environment loading
 console.log('[DEBUG] Environment variables loaded:');
@@ -234,6 +240,10 @@ class SelfEditingDiscordBot {
   // Initialize Discord client and health server
   async initialize(): Promise<void> {
     try {
+      console.log('[DEBUG-INIT] Starting bot initialization');
+      console.log('[DEBUG-INIT] conversationalDiscordConfig in initialize():', this.conversationalDiscordConfig);
+      console.log('[DEBUG-INIT] conversationalDiscordConfig?.enabled:', this.conversationalDiscordConfig?.enabled);
+      
       // Initialize Redis connection first
       await this.redis.connect();
       this.logger.info('Redis connection established');
@@ -308,9 +318,24 @@ class SelfEditingDiscordBot {
 
   // Initialize Discord bot integration for conversational mode
   private async initializeDiscordIntegration(conversationalDiscordConfig?: ConversationalDiscordConfig): Promise<void> {
+    // DEBUG: Log config parameter
+    console.log('[DEBUG-INIT-DISCORD] initializeDiscordIntegration called');
+    console.log('[DEBUG-INIT-DISCORD] conversationalDiscordConfig:', conversationalDiscordConfig);
+    console.log('[DEBUG-INIT-DISCORD] conversationalDiscordConfig.enabled:', conversationalDiscordConfig?.enabled);
+    console.log('[DEBUG-INIT-DISCORD] typeof conversationalDiscordConfig:', typeof conversationalDiscordConfig);
+    console.log('[DEBUG-INIT-DISCORD] conversationalDiscordConfig keys:', conversationalDiscordConfig ? Object.keys(conversationalDiscordConfig) : 'N/A');
+    
     if (!conversationalDiscordConfig) {
+      console.log('[DEBUG-INIT-DISCORD] Early return: conversationalDiscordConfig is falsy');
       return;
     }
+    
+    if (!conversationalDiscordConfig.enabled) {
+      console.log('[DEBUG-INIT-DISCORD] Early return: conversational mode is disabled');
+      return;
+    }
+    
+    console.log('[DEBUG-INIT-DISCORD] PASSED early checks, proceeding with integration creation');
 
     try {
       // Initialize ContextManager
@@ -380,8 +405,10 @@ class SelfEditingDiscordBot {
               retries: parseInt(process.env.OPENAI_RETRY_ATTEMPTS || '3'),
             },
             anthropic: {
-              enabled: false,
-              apiKey: '',
+              enabled: !!process.env.ANTHROPIC_API_KEY,
+              apiKey: process.env.ANTHROPIC_API_KEY || '',
+              timeout: parseInt(process.env.ANTHROPIC_TIMEOUT || '30000'),
+              retries: parseInt(process.env.ANTHROPIC_RETRY_ATTEMPTS || '3'),
             },
             local: {
               enabled: false,
@@ -450,7 +477,9 @@ class SelfEditingDiscordBot {
         conversationalEnabled: conversationalDiscordConfig.enabled,
         mode: conversationalDiscordConfig.mode,
       });
+      console.log('[DEBUG-INIT-DISCORD] Integration created successfully, this.discordBotIntegration:', !!this.discordBotIntegration);
     } catch (error) {
+      console.log('[DEBUG-INIT-DISCORD] ERROR in initializeDiscordIntegration:', error);
       this.logger.error('Failed to initialize Discord bot integration', error as Error);
     }
   }
@@ -866,7 +895,17 @@ async function main() {
     process.exit(1);
   }
 
-  const bot = new SelfEditingDiscordBot(token, logger, config);
+  // Load conversational configuration
+  const conversationalConfig = conversationalConfigManager.getConfiguration();
+  console.log('[DEBUG] Conversational config loaded:', {
+    enabled: conversationalConfig.enabled,
+    mode: conversationalConfig.mode,
+    responseChannel: conversationalConfig.responseChannel
+  });
+  console.log('[DEBUG] DISCORD_CONVERSATIONAL_ENABLED env var:', process.env.DISCORD_CONVERSATIONAL_ENABLED);
+  console.log('[DEBUG] Full conversational config object:', JSON.stringify(conversationalConfig, null, 2));
+
+  const bot = new SelfEditingDiscordBot(token, logger, config, conversationalConfig);
   
   try {
     await bot.initialize();

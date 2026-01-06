@@ -133,16 +133,16 @@ export class OpenAIProvider extends BaseAIProvider {
   getAvailableModels(): AIModel[] {
     return [
       {
-        id: 'gpt-4-turbo',
-        name: 'GPT-4 Turbo',
+        id: 'gpt-3.5-turbo',
+        name: 'GPT-3.5 Turbo',
         provider: 'openai',
-        type: 'gpt-4-turbo',
-        maxTokens: 128000,
-        contextWindow: 128000,
-        costPerToken: 0.00003,
+        type: 'gpt-3.5-turbo',
+        maxTokens: 16384,
+        contextWindow: 16384,
+        costPerToken: 0.000002,
         cost: {
-          input: 0.00003,
-          output: 0.00006,
+          input: 0.000002,
+          output: 0.000004,
           currency: 'USD'
         },
         capabilities: [
@@ -260,7 +260,7 @@ export class OpenAIProvider extends BaseAIProvider {
 
   private buildOpenAIRequest(request: AIRequest): any {
     return {
-      model: request.model || 'gpt-4-turbo',
+      model: request.model || 'gpt-3.5-turbo',
       messages: request.messages.map(msg => ({
         role: msg.role,
         content: msg.content,
@@ -374,16 +374,16 @@ export class AnthropicProvider extends BaseAIProvider {
   getAvailableModels(): AIModel[] {
     return [
       {
-        id: 'claude-3-opus',
-        name: 'Claude 3 Opus',
+        id: 'claude-sonnet-4-5-20250929',
+        name: 'Claude Sonnet 4.5',
         provider: 'anthropic',
-        type: 'claude-3-opus',
+        type: 'claude-sonnet-4-5',
         maxTokens: 200000,
         contextWindow: 200000,
-        costPerToken: 0.000075,
+        costPerToken: 0.000015,
         cost: {
-          input: 0.000075,
-          output: 0.00015,
+          input: 0.000015,
+          output: 0.00003,
           currency: 'USD'
         },
         capabilities: [
@@ -511,7 +511,7 @@ export class AnthropicProvider extends BaseAIProvider {
     const messages = this.convertMessagesToAnthropicFormat(request.messages);
     
     return {
-      model: request.model || 'claude-3-opus',
+      model: request.model || 'claude-sonnet-4-5-20250929',
       max_tokens: request.maxTokens || 1000,
       messages,
       temperature: request.temperature,

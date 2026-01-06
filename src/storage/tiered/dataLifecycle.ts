@@ -102,6 +102,12 @@ export class DataLifecycleManager {
       );
     }
 
+    // Skip if postgres is not available
+    if (!this.postgres) {
+      this.logger.debug('PostgreSQL not available, skipping data tracking');
+      return;
+    }
+
     try {
       // Store in access tracking table
       await this.postgres.query(
@@ -147,6 +153,12 @@ export class DataLifecycleManager {
       );
     }
 
+    // Skip if postgres is not available
+    if (!this.postgres) {
+      this.logger.debug('PostgreSQL not available, skipping access recording');
+      return;
+    }
+
     try {
       // Update access tracking
       await this.postgres.query(
@@ -188,6 +200,12 @@ export class DataLifecycleManager {
       );
     }
 
+    // Skip if postgres is not available
+    if (!this.postgres) {
+      this.logger.debug('PostgreSQL not available, skipping data removal');
+      return;
+    }
+
     try {
       await this.postgres.query(
         'DELETE FROM data_lifecycle_tracking WHERE key = $1',
@@ -221,6 +239,12 @@ export class DataLifecycleManager {
         StorageErrorCode.OPERATION_FAILED,
         'Data lifecycle manager is not initialized'
       );
+    }
+
+    // Skip if postgres is not available
+    if (!this.postgres) {
+      this.logger.debug('PostgreSQL not available, skipping access pattern analysis');
+      return null;
     }
 
     try {
@@ -283,6 +307,12 @@ export class DataLifecycleManager {
       );
     }
 
+    // Skip if postgres is not available
+    if (!this.postgres) {
+      this.logger.debug('PostgreSQL not available, returning empty migration candidates');
+      return [];
+    }
+
     try {
       const result = await this.postgres.query(
         `SELECT 
@@ -334,6 +364,12 @@ export class DataLifecycleManager {
         StorageErrorCode.OPERATION_FAILED,
         'Data lifecycle manager is not initialized'
       );
+    }
+
+    // Skip if postgres is not available
+    if (!this.postgres) {
+      this.logger.debug('PostgreSQL not available, returning empty cost optimizations');
+      return [];
     }
 
     try {
@@ -637,6 +673,12 @@ export class DataLifecycleManager {
    * Creates necessary database tables for lifecycle tracking
    */
   private async createTables(): Promise<void> {
+    // Skip table creation if postgres is not available
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL connection not available, skipping lifecycle tracking table creation. Only hot tier (Redis) will be used.');
+      return;
+    }
+
     const tables = [
       `CREATE TABLE IF NOT EXISTS data_lifecycle_tracking (
         key VARCHAR(255) PRIMARY KEY,

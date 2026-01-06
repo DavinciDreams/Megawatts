@@ -39,6 +39,9 @@ export class ConversationalAIProviderRouter {
   private defaultProvider: string = 'openai';
   private maxRetries: number = 3;
   private baseRetryDelay: number = 1000; // 1 second
+  
+  // Provider fallback priority order
+  private providerPriority: string[] = ['openai', 'anthropic', 'local'];
 
   constructor(config: AIConfiguration, logger: Logger) {
     this.config = config;
@@ -52,7 +55,7 @@ export class ConversationalAIProviderRouter {
   }
 
   /**
-   * Route request to appropriate AI provider
+   * Route request to appropriate AI provider with fallback logic
    */
   async routeRequest(request: ConversationalAIRequest): Promise<ConversationalAIResponse> {
     const requestId = this.generateRequestId();
@@ -62,72 +65,115 @@ export class ConversationalAIProviderRouter {
       maxTokens: request.config.maxTokens,
     });
 
-    try {
-      // Select provider based on configuration and request characteristics
-      const provider = this.selectProvider(request);
-      const providerId = this.getProviderId(provider);
+    // Track which providers have been tried to avoid retrying
+    const triedProviders: Set<string> = new Set();
+    const errors: Array<{ provider: string; error: string }> = [];
 
-      this.logger.debug('Selected provider', {
+    // Try providers in priority order
+    for (const providerId of this.providerPriority) {
+      // Skip if provider not registered or already tried
+      if (!this.providers.has(providerId) || triedProviders.has(providerId)) {
+        continue;
+      }
+
+      const provider = this.providers.get(providerId)!;
+      triedProviders.add(providerId);
+
+      this.logger.debug('Attempting provider', {
         requestId,
         provider: providerId,
+        attemptOrder: triedProviders.size,
       });
 
-      // Execute request with retry logic
-      const response = await this.executeWithRetry(
-        provider,
-        request,
-        providerId,
-        requestId
-      );
+      try {
+        // Check if provider is available before attempting
+        const isAvailable = await provider.isAvailable();
+        if (!isAvailable) {
+          this.logger.warn('Provider not available, skipping', {
+            requestId,
+            provider: providerId,
+          });
+          errors.push({ provider: providerId, error: 'Provider not available' });
+          continue;
+        }
 
-      // Update provider health on success
-      this.updateProviderHealthSuccess(providerId);
+        // Execute request with retry logic for this provider
+        const response = await this.executeWithRetry(
+          provider,
+          request,
+          providerId,
+          requestId
+        );
 
-      // Build conversational response
-      const conversationalResponse: ConversationalAIResponse = {
-        content: response.content,
-        tone: request.config.tone,
-        emotion: this.detectEmotion(response.content),
-        metadata: {
-          requestId,
+        // Update provider health on success
+        this.updateProviderHealthSuccess(providerId);
+
+        // Build conversational response
+        const conversationalResponse: ConversationalAIResponse = {
+          content: response.content,
+          tone: request.config.tone,
+          emotion: this.detectEmotion(response.content),
+          metadata: {
+            requestId,
+            provider: providerId,
+            model: response.model,
+            processingTime: response.metadata?.processingTime,
+            retryAttempts: response.metadata?.retryAttempts || 0,
+            fallbackAttempted: triedProviders.size > 1,
+            providersTried: Array.from(triedProviders),
+          },
           provider: providerId,
           model: response.model,
-          processingTime: response.metadata?.processingTime,
-          retryAttempts: response.metadata?.retryAttempts || 0,
-        },
-        provider: providerId,
-        model: response.model,
-        tokensUsed: response.usage?.totalTokens || 0,
-      };
+          tokensUsed: response.usage?.totalTokens || 0,
+        };
 
-      this.logger.info('Request completed successfully', {
-        requestId,
-        provider: providerId,
-        tokensUsed: conversationalResponse.tokensUsed,
-      });
-
-      return conversationalResponse;
-
-    } catch (error) {
-      this.logger.error('Failed to route request', error as Error, {
-        requestId,
-      });
-
-      // Return error response
-      return {
-        content: 'I apologize, but I encountered an error processing your request.',
-        tone: 'friendly',
-        emotion: 'concerned',
-        metadata: {
+        this.logger.info('Request completed successfully', {
           requestId,
-          error: (error as Error).message,
-          fallbackAttempted: true,
-        },
-        provider: 'fallback',
-        model: 'unknown',
-        tokensUsed: 0,
-      };
+          provider: providerId,
+          tokensUsed: conversationalResponse.tokensUsed,
+          providersTried: Array.from(triedProviders),
+        });
+
+        return conversationalResponse;
+
+      } catch (error) {
+        const errorMessage = (error as Error).message;
+        this.logger.warn('Provider request failed, trying next provider', {
+          requestId,
+          provider: providerId,
+          error: errorMessage,
+        });
+
+        // Update provider health on failure
+        this.updateProviderHealthFailure(providerId, error as Error);
+
+        // Track error for final response
+        errors.push({ provider: providerId, error: errorMessage });
+      }
     }
+
+    // All providers failed - return graceful error response
+    this.logger.error('All providers failed', new Error('All providers exhausted'), {
+      requestId,
+      providersTried: Array.from(triedProviders),
+      errors,
+    });
+
+    return {
+      content: 'I apologize, but I\'m currently unable to process your request. All AI providers are experiencing issues. Please try again later.',
+      tone: 'friendly',
+      emotion: 'concerned',
+      metadata: {
+        requestId,
+        error: 'All providers failed',
+        providersTried: Array.from(triedProviders),
+        errors: errors.map(e => `${e.provider}: ${e.error}`).join('; '),
+        fallbackAttempted: true,
+      },
+      provider: 'fallback',
+      model: 'unknown',
+      tokensUsed: 0,
+    };
   }
 
   /**
@@ -218,11 +264,11 @@ export class ConversationalAIProviderRouter {
    * Execute request with retry logic and exponential backoff
    */
   private async executeWithRetry(
-    provider: BaseAIProvider,
-    request: ConversationalAIRequest,
-    providerId: string,
-    requestId: string
-  ): Promise<any> {
+     provider: BaseAIProvider,
+     request: ConversationalAIRequest,
+     providerId: string,
+     requestId: string
+   ): Promise<any> {
     let lastError: Error | null = null;
     
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
@@ -232,9 +278,9 @@ export class ConversationalAIProviderRouter {
         if (!isAvailable) {
           throw new Error(`Provider ${providerId} is not available`);
         }
-
-        // Build AI request
-        const aiRequest = this.buildAIRequest(request, requestId, attempt);
+        
+        // Build AI request - use the provider's default model
+        const aiRequest = this.buildAIRequest(request, requestId, attempt, provider);
         
         // Execute request
         const response = await provider.generateResponse(aiRequest);
@@ -244,7 +290,7 @@ export class ConversationalAIProviderRouter {
           provider: providerId,
           attempt,
         });
-
+        
         // Add metadata about retry attempts
         if (attempt > 1) {
           response.metadata = {
@@ -252,7 +298,7 @@ export class ConversationalAIProviderRouter {
             retryAttempts: attempt - 1,
           };
         }
-
+        
         return response;
 
       } catch (error) {
@@ -292,7 +338,8 @@ export class ConversationalAIProviderRouter {
   private buildAIRequest(
     request: ConversationalAIRequest,
     requestId: string,
-    attempt: number
+    attempt: number,
+    currentProvider: BaseAIProvider
   ): any {
     const messages: any[] = [];
 
@@ -319,8 +366,7 @@ export class ConversationalAIProviderRouter {
     });
 
     // Get model for provider
-    const provider = this.selectProvider(request);
-    const model = this.getModelForProvider(provider);
+    const model = this.getModelForProvider(currentProvider);
 
     return {
       id: requestId,
@@ -429,8 +475,16 @@ export class ConversationalAIProviderRouter {
       }
     }
 
+    if (this.config.providers?.local?.enabled) {
+      // Local provider would be initialized here
+      if (!this.config.providers?.openai?.apiKey &&
+          !this.config.providers?.anthropic?.apiKey) {
+        this.defaultProvider = 'local';
+      }
+    }
+
     // Initialize health tracking for all providers
-    const providers = ['openai', 'anthropic'];
+    const providers = ['openai', 'anthropic', 'local'];
     for (const providerId of providers) {
       const provider = this.providers.get(providerId);
       this.providerHealth.set(providerId, {

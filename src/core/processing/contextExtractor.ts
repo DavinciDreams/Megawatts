@@ -110,6 +110,7 @@ export class ContextExtractor {
     try {
       // This would typically fetch from database or Discord API
       // For now, return basic context
+      // Placeholder implementation TODO
       const context: GuildContext = {
         memberCount: 0, // Would be fetched from guild
         userRoles: [], // Would be fetched from member

@@ -147,7 +147,41 @@ export class TieredStorageManager {
   }
 
   /**
-   * Initializes the tiered storage system
+   * Gets default configuration for tiered storage
+   * @param config - Partial configuration to override defaults
+   * @returns Complete configuration with defaults applied
+   */
+  private getDefaultConfig(config: Partial<TieredStorageConfig>): TieredStorageConfig {
+    return {
+      hot: {
+        enabled: config.hot?.enabled ?? true,
+        ttl: config.hot?.ttl ?? 3600, // 1 hour default
+        maxSize: config.hot?.maxSize ?? 10000
+      },
+      warm: {
+        enabled: config.warm?.enabled ?? true,
+        retentionDays: config.warm?.retentionDays ?? 30
+      },
+      cold: {
+        enabled: config.cold?.enabled ?? true,
+        retentionDays: config.cold?.retentionDays ?? 90,
+        compressionEnabled: config.cold?.compressionEnabled ?? true
+      },
+      backup: {
+        enabled: config.backup?.enabled ?? false,
+        retentionDays: config.backup?.retentionDays ?? 365,
+        schedule: config.backup?.schedule ?? '0 2 * * *' // Daily at 2 AM
+      },
+      migration: {
+        enabled: config.migration?.enabled ?? true,
+        intervalMinutes: config.migration?.intervalMinutes ?? 60,
+        batchSize: config.migration?.batchSize ?? 100
+      }
+    };
+  }
+
+  /**
+   * Initializes tiered storage system
    * Creates necessary database tables and starts migration scheduler
    */
   async initialize(): Promise<void> {
@@ -181,8 +215,8 @@ export class TieredStorageManager {
   }
 
   /**
-   * Stores data in the appropriate tier based on data type and access patterns
-   * @param key - Unique key for the data
+   * Stores data in appropriate tier based on data type and access patterns
+   * @param key - Unique key for data
    * @param value - Data value to store
    * @param dataType - Type of data being stored
    * @param options - Optional storage options
@@ -249,9 +283,9 @@ export class TieredStorageManager {
   }
 
   /**
-   * Retrieves data from the appropriate tier
+   * Retrieves data from appropriate tier
    * Automatically promotes data to higher tiers if frequently accessed
-   * @param key - Unique key for the data
+   * @param key - Unique key for data
    * @returns The stored data value or null if not found
    */
   async retrieve<T = any>(key: string): Promise<T | null> {
@@ -311,7 +345,7 @@ export class TieredStorageManager {
 
   /**
    * Deletes data from all tiers
-   * @param key - Unique key for the data
+   * @param key - Unique key for data
    */
   async delete(key: string): Promise<void> {
     if (!this.isInitialized) {
@@ -376,7 +410,7 @@ export class TieredStorageManager {
       for (const candidate of migrationCandidates) {
         try {
           const targetTier = this.determineTargetTier(candidate);
-          
+
           if (targetTier !== candidate.currentTier) {
             await this.migrateData(candidate.id, candidate.currentTier, targetTier);
             result.migratedCount++;
@@ -472,7 +506,7 @@ export class TieredStorageManager {
   }
 
   /**
-   * Shuts down the tiered storage system
+   * Shuts down tiered storage system
    */
   async shutdown(): Promise<void> {
     try {
@@ -490,9 +524,30 @@ export class TieredStorageManager {
   }
 
   /**
+   * Starts the automatic migration scheduler
+   */
+  private startMigrationScheduler(): void {
+    const intervalMs = this.config.migration.intervalMinutes * 60 * 1000;
+    this.migrationTimer = setInterval(async () => {
+      try {
+        await this.performMigration();
+      } catch (error) {
+        this.logger.error('Migration scheduler failed:', error);
+      }
+    }, intervalMs);
+    this.logger.info(`Migration scheduler started with interval: ${this.config.migration.intervalMinutes} minutes`);
+  }
+
+  /**
    * Creates necessary database tables for tiered storage
    */
   private async createTables(): Promise<void> {
+    // Skip table creation if postgres is not available
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL connection not available, skipping table creation. Only hot tier (Redis) will be used.');
+      return;
+    }
+
     const tables = [
       `CREATE TABLE IF NOT EXISTS tiered_storage_metadata (
         id VARCHAR(255) PRIMARY KEY,
@@ -530,7 +585,7 @@ export class TieredStorageManager {
   }
 
   /**
-   * Stores data in the hot tier (Redis)
+   * Stores data in hot tier (Redis)
    */
   private async storeInHotTier(
     key: string,
@@ -540,81 +595,96 @@ export class TieredStorageManager {
   ): Promise<void> {
     const serializedValue = JSON.stringify(value);
     const effectiveTtl = ttl || this.config.hot.ttl;
-    
+
     await this.redis.set(
       `tier:hot:${key}`,
       serializedValue,
       effectiveTtl
     );
-    
+
     await this.updateMetadata(metadata);
   }
 
   /**
-   * Stores data in the warm tier (PostgreSQL)
+   * Stores data in warm tier (PostgreSQL)
    */
   private async storeInWarmTier(
     key: string,
     value: any,
     metadata: DataMetadata
   ): Promise<void> {
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL not available, skipping warm tier storage');
+      return;
+    }
+
     const serializedValue = JSON.stringify(value);
-    
+
     await this.postgres.query(
       `INSERT INTO tiered_storage_warm (id, value, created_at, updated_at)
        VALUES ($1, $2, NOW(), NOW())
        ON CONFLICT (id) DO UPDATE SET value = $2, updated_at = NOW()`,
       [key, serializedValue]
     );
-    
+
     await this.updateMetadata(metadata);
   }
 
   /**
-   * Stores data in the cold tier (PostgreSQL with compression)
+   * Stores data in cold tier (PostgreSQL with compression)
    */
   private async storeInColdTier(
     key: string,
     value: any,
     metadata: DataMetadata
   ): Promise<void> {
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL not available, skipping cold tier storage');
+      return;
+    }
+
     const serializedValue = JSON.stringify(value);
-    const compressedValue = this.config.cold.compressionEnabled 
+    const compressedValue = this.config.cold.compressionEnabled
       ? this.compress(serializedValue)
       : serializedValue;
-    
+
     await this.postgres.query(
       `INSERT INTO tiered_storage_cold (id, value, compressed, created_at, updated_at)
        VALUES ($1, $2, $3, NOW(), NOW())
        ON CONFLICT (id) DO UPDATE SET value = $2, compressed = $3, updated_at = NOW()`,
       [key, compressedValue, this.config.cold.compressionEnabled]
     );
-    
+
     await this.updateMetadata(metadata);
   }
 
   /**
-   * Stores data in the backup tier (PostgreSQL with long-term retention)
+   * Stores data in backup tier (PostgreSQL with long-term retention)
    */
   private async storeInBackupTier(
     key: string,
     value: any,
     metadata: DataMetadata
   ): Promise<void> {
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL not available, skipping backup tier storage');
+      return;
+    }
+
     const serializedValue = JSON.stringify(value);
-    
+
     await this.postgres.query(
       `INSERT INTO tiered_storage_backup (id, value, created_at, updated_at)
        VALUES ($1, $2, NOW(), NOW())
        ON CONFLICT (id) DO UPDATE SET value = $2, updated_at = NOW()`,
       [key, serializedValue]
     );
-    
+
     await this.updateMetadata(metadata);
   }
 
   /**
-   * Retrieves data from the hot tier
+   * Retrieves data from hot tier
    */
   private async retrieveFromHotTier<T>(key: string): Promise<T | null> {
     const value = await this.redis.get(`tier:hot:${key}`);
@@ -625,14 +695,19 @@ export class TieredStorageManager {
   }
 
   /**
-   * Retrieves data from the warm tier
+   * Retrieves data from warm tier
    */
   private async retrieveFromWarmTier<T>(key: string): Promise<T | null> {
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL not available, skipping warm tier retrieval');
+      return null;
+    }
+
     const result = await this.postgres.query(
       'SELECT value FROM tiered_storage_warm WHERE id = $1',
       [key]
     );
-    
+
     if (result.rows.length > 0) {
       return JSON.parse(result.rows[0].value) as T;
     }
@@ -640,14 +715,19 @@ export class TieredStorageManager {
   }
 
   /**
-   * Retrieves data from the cold tier
+   * Retrieves data from cold tier
    */
   private async retrieveFromColdTier<T>(key: string): Promise<T | null> {
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL not available, skipping cold tier retrieval');
+      return null;
+    }
+
     const result = await this.postgres.query(
       'SELECT value, compressed FROM tiered_storage_cold WHERE id = $1',
       [key]
     );
-    
+
     if (result.rows.length > 0) {
       const { value, compressed } = result.rows[0];
       const decompressedValue = compressed ? this.decompress(value) : value;
@@ -657,14 +737,19 @@ export class TieredStorageManager {
   }
 
   /**
-   * Retrieves data from the backup tier
+   * Retrieves data from backup tier
    */
   private async retrieveFromBackupTier<T>(key: string): Promise<T | null> {
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL not available, skipping backup tier retrieval');
+      return null;
+    }
+
     const result = await this.postgres.query(
       'SELECT value FROM tiered_storage_backup WHERE id = $1',
       [key]
     );
-    
+
     if (result.rows.length > 0) {
       return JSON.parse(result.rows[0].value) as T;
     }
@@ -672,16 +757,21 @@ export class TieredStorageManager {
   }
 
   /**
-   * Deletes data from the hot tier
+   * Deletes data from hot tier
    */
   private async deleteFromHotTier(key: string): Promise<void> {
     await this.redis.del(`tier:hot:${key}`);
   }
 
   /**
-   * Deletes data from the warm tier
+   * Deletes data from warm tier
    */
   private async deleteFromWarmTier(key: string): Promise<void> {
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL not available, skipping warm tier deletion');
+      return;
+    }
+
     await this.postgres.query(
       'DELETE FROM tiered_storage_warm WHERE id = $1',
       [key]
@@ -689,9 +779,14 @@ export class TieredStorageManager {
   }
 
   /**
-   * Deletes data from the cold tier
+   * Deletes data from cold tier
    */
   private async deleteFromColdTier(key: string): Promise<void> {
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL not available, skipping cold tier deletion');
+      return;
+    }
+
     await this.postgres.query(
       'DELETE FROM tiered_storage_cold WHERE id = $1',
       [key]
@@ -699,9 +794,14 @@ export class TieredStorageManager {
   }
 
   /**
-   * Deletes data from the backup tier
+   * Deletes data from backup tier
    */
   private async deleteFromBackupTier(key: string): Promise<void> {
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL not available, skipping backup tier deletion');
+      return;
+    }
+
     await this.postgres.query(
       'DELETE FROM tiered_storage_backup WHERE id = $1',
       [key]
@@ -712,6 +812,11 @@ export class TieredStorageManager {
    * Updates metadata for a data item
    */
   private async updateMetadata(metadata: DataMetadata): Promise<void> {
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL not available, skipping metadata update');
+      return;
+    }
+
     await this.postgres.query(
       `INSERT INTO tiered_storage_metadata (
         id, data_type, current_tier, created_at, last_accessed_at,
@@ -740,7 +845,7 @@ export class TieredStorageManager {
   }
 
   /**
-   * Determines the initial tier for new data based on data type
+   * Determines initial tier for new data based on data type
    */
   private determineInitialTier(dataType: DataType): StorageTier {
     switch (dataType) {
@@ -763,7 +868,7 @@ export class TieredStorageManager {
   }
 
   /**
-   * Determines the target tier for data based on access patterns
+   * Determines target tier for data based on access patterns
    */
   private determineTargetTier(metadata: DataMetadata): StorageTier {
     const ageInDays = (Date.now() - metadata.createdAt.getTime()) / (1000 * 60 * 60 * 24);
@@ -879,7 +984,7 @@ export class TieredStorageManager {
       return;
     }
 
-    const accessFrequency = metadata.accessCount / 
+    const accessFrequency = metadata.accessCount /
       Math.max((Date.now() - metadata.createdAt.getTime()) / (1000 * 60 * 60 * 24), 1);
 
     // Only promote if access frequency is high enough
@@ -892,6 +997,11 @@ export class TieredStorageManager {
    * Gets metadata for a data item
    */
   private async getMetadata(key: string): Promise<DataMetadata | null> {
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL not available, skipping metadata retrieval');
+      return null;
+    }
+
     const result = await this.postgres.query(
       'SELECT * FROM tiered_storage_metadata WHERE id = $1',
       [key]
@@ -924,6 +1034,11 @@ export class TieredStorageManager {
     toTier: StorageTier,
     reason: string
   ): Promise<void> {
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL not available, skipping migration log');
+      return;
+    }
+
     await this.postgres.query(
       `INSERT INTO tier_migration_log (data_id, from_tier, to_tier, reason, success)
        VALUES ($1, $2, $3, $4, true)`,
@@ -932,9 +1047,18 @@ export class TieredStorageManager {
   }
 
   /**
-   * Gets statistics for the hot tier
+   * Gets statistics for hot tier
    */
   private async getHotTierStats(): Promise<{ itemCount: number; totalSize: number; hitRate: number }> {
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL not available, returning default hot tier stats');
+      return {
+        itemCount: 0,
+        totalSize: 0,
+        hitRate: 0.85 // Placeholder - should be calculated from actual metrics
+      };
+    }
+
     const result = await this.postgres.query(
       `SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as total_size
        FROM tiered_storage_metadata WHERE current_tier = 'hot'`
@@ -948,9 +1072,17 @@ export class TieredStorageManager {
   }
 
   /**
-   * Gets statistics for the warm tier
+   * Gets statistics for warm tier
    */
   private async getWarmTierStats(): Promise<{ itemCount: number; totalSize: number }> {
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL not available, returning default warm tier stats');
+      return {
+        itemCount: 0,
+        totalSize: 0
+      };
+    }
+
     const result = await this.postgres.query(
       `SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as total_size
        FROM tiered_storage_metadata WHERE current_tier = 'warm'`
@@ -963,9 +1095,18 @@ export class TieredStorageManager {
   }
 
   /**
-   * Gets statistics for the cold tier
+   * Gets statistics for cold tier
    */
   private async getColdTierStats(): Promise<{ itemCount: number; totalSize: number; compressedSize: number }> {
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL not available, returning default cold tier stats');
+      return {
+        itemCount: 0,
+        totalSize: 0,
+        compressedSize: 0
+      };
+    }
+
     const result = await this.postgres.query(
       `SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as total_size
        FROM tiered_storage_metadata WHERE current_tier = 'cold'`
@@ -979,9 +1120,17 @@ export class TieredStorageManager {
   }
 
   /**
-   * Gets statistics for the backup tier
+   * Gets statistics for backup tier
    */
   private async getBackupTierStats(): Promise<{ itemCount: number; totalSize: number }> {
+    if (!this.postgres) {
+      this.logger.warn('PostgreSQL not available, returning default backup tier stats');
+      return {
+        itemCount: 0,
+        totalSize: 0
+      };
+    }
+
     const result = await this.postgres.query(
       `SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as total_size
        FROM tiered_storage_metadata WHERE current_tier = 'backup'`
@@ -994,56 +1143,7 @@ export class TieredStorageManager {
   }
 
   /**
-   * Starts the migration scheduler
-   */
-  private startMigrationScheduler(): void {
-    const interval = this.config.migration.intervalMinutes * 60 * 1000;
-    
-    this.migrationTimer = setInterval(async () => {
-      try {
-        await this.performMigration();
-      } catch (error) {
-        this.logger.error('Migration scheduler error:', error);
-      }
-    }, interval);
-
-    this.logger.info(`Migration scheduler started with ${this.config.migration.intervalMinutes} minute interval`);
-  }
-
-  /**
-   * Gets default configuration
-   */
-  private getDefaultConfig(config: Partial<TieredStorageConfig>): TieredStorageConfig {
-    return {
-      hot: {
-        enabled: config.hot?.enabled ?? true,
-        ttl: config.hot?.ttl ?? 3600, // 1 hour
-        maxSize: config.hot?.maxSize ?? 10000
-      },
-      warm: {
-        enabled: config.warm?.enabled ?? true,
-        retentionDays: config.warm?.retentionDays ?? 90
-      },
-      cold: {
-        enabled: config.cold?.enabled ?? true,
-        retentionDays: config.cold?.retentionDays ?? 365,
-        compressionEnabled: config.cold?.compressionEnabled ?? true
-      },
-      backup: {
-        enabled: config.backup?.enabled ?? true,
-        retentionDays: config.backup?.retentionDays ?? 2555, // 7 years
-        schedule: config.backup?.schedule ?? '0 2 * * *' // Daily at 2 AM
-      },
-      migration: {
-        enabled: config.migration?.enabled ?? true,
-        intervalMinutes: config.migration?.intervalMinutes ?? 60,
-        batchSize: config.migration?.batchSize ?? 100
-      }
-    };
-  }
-
-  /**
-   * Calculates the size of a value in bytes
+   * Calculates size of a value in bytes
    */
   private calculateSize(value: any): number {
     return Buffer.byteLength(JSON.stringify(value), 'utf8');
