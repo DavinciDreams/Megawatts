@@ -65,6 +65,11 @@ export class ConversationalAIProviderRouter {
       maxTokens: request.config.maxTokens,
     });
 
+    // DEBUG: Log available providers before routing
+    const availableProviders = this.getProviders();
+    this.logger.info(`[AI-ROUTER] Available providers: ${Array.from(availableProviders.keys()).join(', ')}`);
+    this.logger.info(`[AI-ROUTER] Provider count: ${availableProviders.size}`);
+
     // Track which providers have been tried to avoid retrying
     const triedProviders: Set<string> = new Set();
     const errors: Array<{ provider: string; error: string }> = [];
@@ -73,15 +78,15 @@ export class ConversationalAIProviderRouter {
     for (const providerId of this.providerPriority) {
       // Skip if provider not registered or already tried
       if (!this.providers.has(providerId) || triedProviders.has(providerId)) {
+        this.logger.debug(`[AI-ROUTER] Skipping provider ${providerId} - not registered or already tried`);
         continue;
       }
 
       const provider = this.providers.get(providerId)!;
       triedProviders.add(providerId);
 
-      this.logger.debug('Attempting provider', {
+      this.logger.debug(`[AI-ROUTER] Attempting provider ${providerId}`, {
         requestId,
-        provider: providerId,
         attemptOrder: triedProviders.size,
       });
 
@@ -89,9 +94,8 @@ export class ConversationalAIProviderRouter {
         // Check if provider is available before attempting
         const isAvailable = await provider.isAvailable();
         if (!isAvailable) {
-          this.logger.warn('Provider not available, skipping', {
+          this.logger.warn(`[AI-ROUTER] Provider ${providerId} not available`, {
             requestId,
-            provider: providerId,
           });
           errors.push({ provider: providerId, error: 'Provider not available' });
           continue;
@@ -127,20 +131,17 @@ export class ConversationalAIProviderRouter {
           tokensUsed: response.usage?.totalTokens || 0,
         };
 
-        this.logger.info('Request completed successfully', {
+        this.logger.info(`[AI-ROUTER] Request completed successfully via ${providerId}`, {
           requestId,
-          provider: providerId,
           tokensUsed: conversationalResponse.tokensUsed,
-          providersTried: Array.from(triedProviders),
         });
 
         return conversationalResponse;
 
       } catch (error) {
         const errorMessage = (error as Error).message;
-        this.logger.warn('Provider request failed, trying next provider', {
+        this.logger.warn(`[AI-ROUTER] Provider ${providerId} request failed`, {
           requestId,
-          provider: providerId,
           error: errorMessage,
         });
 
@@ -153,11 +154,13 @@ export class ConversationalAIProviderRouter {
     }
 
     // All providers failed - return graceful error response
-    this.logger.error('All providers failed', new Error('All providers exhausted'), {
+    this.logger.error('[AI-ROUTER] All providers failed', new Error('All providers exhausted'), {
       requestId,
       providersTried: Array.from(triedProviders),
       errors,
     });
+
+    this.logger.info(`[AI-ROUTER] Returning error response: ${errors.map(e => `${e.provider}: ${e.error}`).join('; ')}`);
 
     return {
       content: 'I apologize, but I\'m currently unable to process your request. All AI providers are experiencing issues. Please try again later.',
@@ -368,7 +371,8 @@ export class ConversationalAIProviderRouter {
     // Get model for provider
     const model = this.getModelForProvider(currentProvider);
 
-    return {
+    // Build request with tools if provided
+    const aiRequest: any = {
       id: requestId,
       model,
       messages,
@@ -378,6 +382,13 @@ export class ConversationalAIProviderRouter {
       conversationId: request.context.conversationId,
       timestamp: new Date(),
     };
+
+    // Include tools if provided and tool calling is enabled
+    if (request.tools && request.config.features.toolCalling) {
+      aiRequest.tools = request.tools;
+    }
+
+    return aiRequest;
   }
 
   /**

@@ -19,6 +19,7 @@ import { DiscordContextManager } from '../context/DiscordContextManager';
 import { ContextManager } from '../../ai/core/context-manager';
 import { TieredStorageManager } from '../../storage/tiered/tieredStorage';
 import { OpenAIProvider, AnthropicProvider, LocalModelProvider } from '../../ai/core/ai-provider';
+import { ToolRegistry } from '../../ai/tools/tool-registry';
 
 // ============================================================================
 // INTEGRATION INTERFACE
@@ -87,6 +88,7 @@ export interface DiscordBotIntegrationOptions {
   discordContextManager?: DiscordContextManager;
   contextManager?: ContextManager;
   tieredStorage?: TieredStorageManager;
+  toolRegistry?: ToolRegistry;
 }
 
 // ============================================================================
@@ -108,6 +110,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
   private discordContextManager: DiscordContextManager | null = null;
   private contextManager: ContextManager | null = null;
   private tieredStorage: TieredStorageManager | null = null;
+  private toolRegistry: ToolRegistry | null = null;
 
   // State tracking
   private initialized = false;
@@ -146,6 +149,9 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
     }
     if (options.tieredStorage) {
       this.tieredStorage = options.tieredStorage;
+    }
+    if (options.toolRegistry) {
+      this.toolRegistry = options.toolRegistry;
     }
 
     this.logger.info('DiscordBotIntegration created', {
@@ -346,6 +352,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
         this.conversationManager!,
         this.emotionalIntelligenceEngine!,
         this.emergencyStopHandler!,
+        this.toolRegistry!,
         this.logger
       );
       this.logger.debug('DiscordConversationHandler initialized');
@@ -362,9 +369,19 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
     }
 
     const { providers } = this.aiConfig;
+    
+    // DEBUG: Log provider configuration
+    this.logger.info('[AI-PROVIDER-REG] Starting provider registration');
+    this.logger.info(`[AI-PROVIDER-REG] OpenAI enabled: ${providers?.openai?.enabled}`);
+    this.logger.info(`[AI-PROVIDER-REG] OpenAI API key exists: ${!!providers?.openai?.apiKey}`);
+    this.logger.info(`[AI-PROVIDER-REG] OpenAI API key length: ${providers?.openai?.apiKey?.length || 0}`);
+    this.logger.info(`[AI-PROVIDER-REG] Anthropic enabled: ${providers?.anthropic?.enabled}`);
+    this.logger.info(`[AI-PROVIDER-REG] Anthropic API key exists: ${!!providers?.anthropic?.apiKey}`);
+    this.logger.info(`[AI-PROVIDER-REG] Anthropic API key length: ${providers?.anthropic?.apiKey?.length || 0}`);
 
     // Register OpenAI provider if configured
     if (providers?.openai?.enabled && providers.openai.apiKey) {
+      this.logger.info('[AI-PROVIDER-REG] Registering OpenAI provider - enabled and API key present');
       const openaiProvider = new OpenAIProvider(
         {
           apiKey: providers.openai.apiKey,
@@ -376,10 +393,13 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       );
       this.aiProviderRouter.registerProvider('openai', openaiProvider);
       this.logger.info('OpenAI provider registered');
+    } else {
+      this.logger.warn('[AI-PROVIDER-REG] OpenAI NOT registered - enabled:', providers?.openai?.enabled, 'apiKey present:', !!providers?.openai?.apiKey);
     }
 
     // Register Anthropic provider if configured
     if (providers?.anthropic?.enabled && providers.anthropic.apiKey) {
+      this.logger.info('[AI-PROVIDER-REG] Registering Anthropic provider - enabled and API key present');
       const anthropicProvider = new AnthropicProvider(
         {
           apiKey: providers.anthropic.apiKey,
@@ -391,10 +411,13 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       );
       this.aiProviderRouter.registerProvider('anthropic', anthropicProvider);
       this.logger.info('Anthropic provider registered');
+    } else {
+      this.logger.warn('[AI-PROVIDER-REG] Anthropic NOT registered - enabled:', providers?.anthropic?.enabled, 'apiKey present:', !!providers?.anthropic?.apiKey);
     }
 
     // Register Local model provider if configured
     if (providers?.local?.enabled) {
+      this.logger.info('[AI-PROVIDER-REG] Registering Local provider - enabled');
       const localProvider = new LocalModelProvider(
         {
           endpoint: providers.local.endpoint,
@@ -406,6 +429,8 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       );
       this.aiProviderRouter.registerProvider('local', localProvider);
       this.logger.info('Local model provider registered');
+    } else {
+      this.logger.warn('[AI-PROVIDER-REG] Local NOT registered - enabled:', providers?.local?.enabled);
     }
 
     const registeredProviders = this.aiProviderRouter.getProviders();

@@ -573,6 +573,15 @@ export class AdvancedConfigManager {
           perChannelLimit: true,
           cooldownPeriod: 5,
         },
+        features: currentConvDiscord?.features ?? {
+          crossChannelAwareness: true,
+          temporalContext: true,
+          userLearning: false,
+          adaptiveResponses: true,
+          toolCalling: true,
+          codeExecution: false,
+          selfEditing: false,
+        },
       };
     }
 
@@ -753,7 +762,7 @@ export class AdvancedConfigManager {
           temporalContext: true,
           userLearning: false,
           adaptiveResponses: true,
-          toolCalling: false,
+          toolCalling: true,
           codeExecution: false,
           selfEditing: false,
         },

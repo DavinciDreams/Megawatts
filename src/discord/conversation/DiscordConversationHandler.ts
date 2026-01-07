@@ -27,6 +27,8 @@ import { DiscordContextManager } from '../context/DiscordContextManager';
 import { EmotionalIntelligenceEngine } from '../emotional/EmotionalIntelligenceEngine';
 import { EmergencyStopHandler } from '../emotional/EmergencyStopHandler';
 import { Logger } from '../../utils/logger';
+import { ToolRegistry } from '../../ai/tools/tool-registry';
+import { Tool } from '../../types/ai';
 
 // ============================================================================
 // DISCORD CONVERSATION HANDLER CLASS
@@ -39,6 +41,7 @@ export class DiscordConversationHandler {
   private conversationManager: ConversationManager;
   private emotionalIntelligenceEngine: EmotionalIntelligenceEngine;
   private emergencyStopHandler: EmergencyStopHandler;
+  private toolRegistry: ToolRegistry;
   private logger: Logger;
   private activeConversations: Map<string, ConversationContext> = new Map();
 
@@ -49,6 +52,7 @@ export class DiscordConversationHandler {
     conversationManager: ConversationManager,
     emotionalIntelligenceEngine: EmotionalIntelligenceEngine,
     emergencyStopHandler: EmergencyStopHandler,
+    toolRegistry: ToolRegistry,
     logger: Logger
   ) {
     this.config = config;
@@ -57,6 +61,7 @@ export class DiscordConversationHandler {
     this.conversationManager = conversationManager;
     this.emotionalIntelligenceEngine = emotionalIntelligenceEngine;
     this.emergencyStopHandler = emergencyStopHandler;
+    this.toolRegistry = toolRegistry;
     this.logger = logger;
 
     this.logger.info('DiscordConversationHandler initialized', {
@@ -227,6 +232,7 @@ export class DiscordConversationHandler {
         context: conversationContext,
         config: this.config,
         systemPrompt: this.config.personality.systemPrompt,
+        tools: this.getToolsForRequest(),
       };
 
       // Route to AI provider and get response
@@ -434,6 +440,48 @@ export class DiscordConversationHandler {
   }
 
   /**
+   * Get tools for AI request
+   */
+  private getToolsForRequest(): any[] | undefined {
+    // Only include tools if tool calling is enabled in config
+    if (!this.config.features.toolCalling) {
+      return undefined;
+    }
+
+    // Get all tools from registry
+    const tools = this.toolRegistry.getAllTools();
+
+    // Convert tools to OpenAI format for AI providers
+    return tools.map(tool => ({
+      type: 'function',
+      function: {
+        name: tool.name,
+        description: tool.description,
+        parameters: {
+          type: 'object',
+          properties: tool.parameters.reduce((acc, param) => {
+            acc[param.name] = {
+              type: param.type,
+              description: param.description,
+              ...(param.defaultValue !== undefined && { default: param.defaultValue }),
+              ...(param.validation && {
+                ...(param.validation.min !== undefined && { minimum: param.validation.min }),
+                ...(param.validation.max !== undefined && { maximum: param.validation.max }),
+                ...(param.validation.minLength !== undefined && { minLength: param.validation.minLength }),
+                ...(param.validation.maxLength !== undefined && { maxLength: param.validation.maxLength }),
+                ...(param.validation.pattern !== undefined && { pattern: param.validation.pattern }),
+                ...(param.validation.enum !== undefined && { enum: param.validation.enum }),
+              }),
+            };
+            return acc;
+          }, {} as Record<string, any>),
+          required: tool.parameters.filter(p => p.required).map(p => p.name),
+        },
+      },
+    }));
+  }
+
+  /**
    * Get user preferences (placeholder implementation)
    */
   private getUserPreferences(userId: string): UserPreferences {
@@ -498,8 +546,9 @@ export class DiscordConversationHandler {
    */
   private getModelForProvider(): string {
     const providers = this.aiProvider.getProviders();
-    const defaultModel = Array.from(providers.values())[0]?.id || 'gpt-4-turbo';
-    return defaultModel?.id || 'gpt-4-turbo';
+    const defaultProvider = Array.from(providers.values())[0];
+    const providerInfo = defaultProvider?.getProviderInfo();
+    return providerInfo?.id || 'gpt-4-turbo';
   }
 
   /**

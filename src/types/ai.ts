@@ -440,15 +440,18 @@ export interface ToolParameter {
   defaultValue?: any;
 }
 
-export type ParameterType = 
-  | 'string'
-  | 'number'
-  | 'boolean'
-  | 'array'
-  | 'object'
-  | 'file'
-  | 'url'
-  | 'custom';
+export const ParameterType = {
+  string: 'string',
+  number: 'number',
+  boolean: 'boolean',
+  array: 'array',
+  object: 'object',
+  file: 'file',
+  url: 'url',
+  custom: 'custom'
+} as const;
+
+export type ParameterType = typeof ParameterType[keyof typeof ParameterType];
 
 export interface ParameterValidation {
   pattern?: string;
@@ -460,14 +463,17 @@ export interface ParameterValidation {
   custom?: string;
 }
 
-export type ToolCategory = 
-  | 'discord'
-  | 'information'
-  | 'system'
-  | 'external'
-  | 'ai'
-  | 'moderation'
-  | 'utility';
+export const ToolCategory = {
+  discord: 'discord',
+  information: 'information',
+  system: 'system',
+  external: 'external',
+  ai: 'ai',
+  moderation: 'moderation',
+  utility: 'utility'
+} as const;
+
+export type ToolCategory = typeof ToolCategory[keyof typeof ToolCategory];
 
 export interface ToolSafety {
   level: 'safe' | 'restricted' | 'dangerous';

@@ -20,6 +20,8 @@ import {
 } from './discord/integration/botIntegration';
 import { ContextManager } from './ai/core/context-manager';
 import { TieredStorageManager } from './storage/tiered/tieredStorage';
+import { ToolRegistry, ToolRegistryConfig } from './ai/tools/tool-registry';
+import { sendLongReply } from './utils/discord-message-helper';
 
 // Load environment variables FIRST
 dotenv.config();
@@ -356,7 +358,7 @@ class SelfEditingDiscordBot {
         },
         this.logger
       );
-      
+
       // Initialize TieredStorageManager with existing Redis connection and null for postgres
       const tieredStorage = new TieredStorageManager(
         null as any, // PostgresConnectionManager - bot doesn't have one
@@ -388,10 +390,31 @@ class SelfEditingDiscordBot {
           },
         }
       );
-      
+
       // Initialize TieredStorageManager
       await tieredStorage.initialize();
       this.logger.info('TieredStorageManager initialized');
+      
+      // Initialize ToolRegistry for tool calling support
+      const toolRegistryConfig: ToolRegistryConfig = {
+        autoRegisterBuiltinTools: true,
+        enablePermissions: true,
+        enableCategories: true,
+        enableCaching: true,
+        cacheTTL: 3600000, // 1 hour
+        enableMonitoring: true,
+        enableDependencyManagement: true,
+        maxTools: 100,
+        toolDiscoveryPaths: [
+          './src/tools',
+        ],
+        enableRateLimiting: true,
+      };
+      const toolRegistry = new ToolRegistry(toolRegistryConfig, this.logger);
+      
+      // Discover tools from configured paths
+      await toolRegistry.discoverTools();
+      this.logger.info('ToolRegistry initialized and tools discovered');
       
       this.discordBotIntegration = await createDiscordBotIntegration({
         client: this.client,
@@ -471,8 +494,9 @@ class SelfEditingDiscordBot {
         logger: this.logger,
         contextManager,
         tieredStorage,
+        toolRegistry,
       });
-      
+
       this.logger.info('Discord bot integration initialized', {
         conversationalEnabled: conversationalDiscordConfig.enabled,
         mode: conversationalDiscordConfig.mode,
@@ -579,7 +603,7 @@ class SelfEditingDiscordBot {
           // Also mark in local set as processed
           this.processedMessages.add(message.id);
           
-          // Only log and process if we have the lock and message hasn't been processed
+          // Only log and process if we have lock and message hasn't been processed
           this.logger.info(`[LOCKED] Processing message from ${message.author.username}: ${message.content}`);
           
           this.logger.info(`[CONV] Checking conversational mode (integration exists: ${!!this.discordBotIntegration})`);
@@ -591,7 +615,7 @@ class SelfEditingDiscordBot {
           this.logger.info(`[DEBUG] shouldUseConversationalMode result: ${shouldUseConv}`);
           
           // CRITICAL FIX: For commands, always use command handler, not conversational mode
-          // This prevents duplicate responses when both modes could process the same message
+          // This prevents duplicate responses when both modes could process same message
           const isCommand = message.content.startsWith('!');
           if (shouldUseConv && !isCommand) {
             this.logger.info(`[CONV] Using conversational mode for message ${message.id}`);
@@ -602,9 +626,14 @@ class SelfEditingDiscordBot {
             this.logger.info(`[CONV] processMessage returned response: ${response ? 'YES' : 'NO'} (length: ${response?.content?.length || 0})`);
             
             if (response) {
-              // Send the conversational response
-              await message.reply(response.content);
-              this.logger.info(`[CONV] Conversational reply sent for message ${message.id}`);
+              // Send conversational response with length handling
+              const result = await sendLongReply(message, response.content, {
+                strategy: 'split',
+                addContinuationMarkers: true,
+                maxMessages: 10,
+                logger: this.logger,
+              });
+              this.logger.info(`[CONV] Conversational reply sent for message ${message.id} (${result.messageCount} message(s))`);
             }
             this.logger.info(`[CONV] Returning from conversational mode for message ${message.id}`);
             return;
@@ -732,7 +761,7 @@ class SelfEditingDiscordBot {
       }
     } catch (error) {
       this.logger.error(`Error handling command ${intent}:`, error);
-      await message.reply('❌ An error occurred while processing your command.');
+      await sendLongReply(message, '❌ An error occurred while processing your command.', { logger: this.logger });
     }
   }
 
@@ -770,14 +799,14 @@ class SelfEditingDiscordBot {
     
     // DEBUG: Log before sending reply
     this.logger.info(`[DEBUG-HELP] About to send reply for message ${message.id}`);
-    await message.reply(response);
+    const result = await sendLongReply(message, response, { logger: this.logger });
     // DEBUG: Log after sending reply
-    this.logger.info(`[DEBUG-HELP] Reply sent for message ${message.id}`);
+    this.logger.info(`[DEBUG-HELP] Reply sent for message ${message.id} (${result.messageCount} message(s))`);
   }
 
   private async handlePing(message: Message): Promise<void> {
     const response = '🏓 Pong! Bot is online and responsive.';
-    await message.reply(response);
+    await sendLongReply(message, response, { logger: this.logger });
   }
 
   private async handleStatus(message: Message): Promise<void> {
@@ -793,8 +822,8 @@ class SelfEditingDiscordBot {
 💾 **Memory Usage:** ${memUsedMB}MB
 🏓 **API Latency:** ${this.client.ws.ping}ms
 👤 **Bot User:** ${this.client.user?.tag}`;
-    
-    await message.reply(response);
+
+    await sendLongReply(message, response, { logger: this.logger });
   }
 
   private async handleHealth(message: Message): Promise<void> {
@@ -822,11 +851,12 @@ ${health.checks.map((check) => {
 }).join('\n')}
 
 Health server available at: http://${this.config.get('HTTP_HOST')}:${this.config.get('HTTP_PORT')}/health`;
-      
-      await message.reply(response);
+
+      const result = await sendLongReply(message, response, { logger: this.logger });
+      this.logger.info(`Health response sent (${result.messageCount} message(s))`);
     } catch (error) {
       this.logger.error('Failed to get health status:', error);
-      await message.reply('❌ Failed to get health status');
+      await sendLongReply(message, '❌ Failed to get health status', { logger: this.logger });
     }
   }
 
@@ -836,8 +866,8 @@ Health server available at: http://${this.config.get('HTTP_HOST')}:${this.config
       'Configuration management is under development.\n' +
       'Basic settings available through `!config set <key> <value>`\n' +
       'Full configuration system coming in Phase 2.';
-    
-    await message.reply(response);
+
+    await sendLongReply(message, response, { logger: this.logger });
   }
 
   private async handleSelfEdit(message: Message): Promise<void> {
@@ -846,8 +876,8 @@ Health server available at: http://${this.config.get('HTTP_HOST')}:${this.config
       'Basic code analysis and modification will be available in Phase 2.\n' +
       'Current status: Ready for basic optimization requests.\n' +
       '\n*Use `!self_edit help` for available commands*';
-    
-    await message.reply(response);
+
+    await sendLongReply(message, response, { logger: this.logger });
   }
 
   private async handleAnalyze(message: Message): Promise<void> {
@@ -856,8 +886,8 @@ Health server available at: http://${this.config.get('HTTP_HOST')}:${this.config
       'Advanced conversational AI will be available in Phase 3.\n' +
       'Current status: Basic pattern recognition available.\n' +
       '\n*Use `!analyze help` for available analysis options*';
-    
-    await message.reply(response);
+
+    await sendLongReply(message, response, { logger: this.logger });
   }
 
   private async handleOptimize(message: Message): Promise<void> {
@@ -866,16 +896,16 @@ Health server available at: http://${this.config.get('HTTP_HOST')}:${this.config
       'Advanced optimization features will be available in Phase 3.\n' +
       'Current status: Basic performance monitoring available.\n' +
       '\n*Use `!optimize help` for available optimization options*';
-    
-    await message.reply(response);
+
+    await sendLongReply(message, response, { logger: this.logger });
   }
 
   private async handleDefault(message: Message): Promise<void> {
     // Default conversation handler with basic AI integration
     const response = '🤖 Hello! I\'m a self-editing Discord bot with AI-powered capabilities. ' +
       'How can I assist you today?';
-    
-    await message.reply(response);
+
+    await sendLongReply(message, response, { logger: this.logger });
   }
 }
 
@@ -938,12 +968,9 @@ async function handleShutdown(signal: string) {
       console.error('Error during shutdown:', error);
     }
   }
-  
+
   process.exit(0);
 }
-
-process.on('SIGINT', () => handleShutdown('SIGINT'));
-process.on('SIGTERM', () => handleShutdown('SIGTERM'));
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
@@ -951,6 +978,7 @@ process.on('uncaughtException', (error) => {
   process.exit(1);
 });
 
+// Handle unhandled rejections
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
   process.exit(1);
@@ -963,6 +991,3 @@ main().then(bot => {
   console.error('Unhandled error during startup:', error);
   process.exit(1);
 });
-
-// Export bot class
-export default SelfEditingDiscordBot;

@@ -268,7 +268,7 @@ export class ConversationalConfigManager {
         temporalContext: true,
         userLearning: false,
         adaptiveResponses: true,
-        toolCalling: false,
+        toolCalling: true,
         codeExecution: false,
         selfEditing: false,
       },

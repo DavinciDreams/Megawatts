@@ -7,7 +7,9 @@
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { glob } from 'glob';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import glob from 'glob';
 import {
   Tool,
   ToolCategory,
@@ -36,6 +38,7 @@ export interface ToolRegistryConfig {
   cacheTTL: number;
   enableMonitoring: boolean;
   enableDependencyManagement: boolean;
+  enableRateLimiting: boolean;
 }
 
 export interface ToolExecutorConfig {
@@ -149,45 +152,104 @@ export class ToolRegistry {
       errors: []
     };
 
+    // Auto-register built-in tools if enabled
+    if (this.config.autoRegisterBuiltinTools) {
+      this.logger.info('Auto-registering built-in tools', {
+        enabled: this.config.autoRegisterBuiltinTools
+      });
+      await this.autoRegisterBuiltinTools();
+    }
+
+    // Determine project root using process.cwd() (works in both dev and production)
+    let projectRoot = process.cwd();
+
+    // Validate that we're at the project root by checking for package.json
+    const packageJsonPath = path.join(projectRoot, 'package.json');
+    const hasPackageJson = await fs.access(packageJsonPath).then(() => true).catch(() => false);
+
+    if (!hasPackageJson) {
+      // Fallback: try to find project root by searching upward
+      this.logger.warn('package.json not found in current directory, searching for project root');
+      let searchDir = projectRoot;
+      while (searchDir !== path.dirname(searchDir)) {
+        const testPath = path.join(searchDir, 'package.json');
+        const exists = await fs.access(testPath).then(() => true).catch(() => false);
+        if (exists) {
+          projectRoot = searchDir;
+          break;
+        }
+        searchDir = path.dirname(searchDir);
+      }
+    }
+
+    // Use configured tool discovery paths, falling back to standard paths if not provided
+    const potentialPaths = this.config.toolDiscoveryPaths && this.config.toolDiscoveryPaths.length > 0
+      ? this.config.toolDiscoveryPaths
+      : [
+          path.join(projectRoot, 'src/tools'),  // Standard location
+          path.join(projectRoot, 'tools'),      // Alternative location
+        ];
+
     this.logger.info('Starting tool discovery', {
-      paths: this.config.toolDiscoveryPaths
+      projectRoot,
+      discoveryPaths: potentialPaths,
+      autoRegisterBuiltinTools: this.config.autoRegisterBuiltinTools,
+      cwd: process.cwd()
     });
 
-    for (const discoveryPath of this.config.toolDiscoveryPaths) {
+    for (const discoveryPath of potentialPaths) {
       try {
         const fullPath = path.resolve(discoveryPath);
         const exists = await fs.access(fullPath).then(() => true).catch(() => false);
 
         if (!exists) {
-          this.logger.warn(`Tool discovery path does not exist: ${fullPath}`);
+          this.logger.debug(`Tool discovery path does not exist: ${fullPath}`);
           continue;
         }
 
         // Find all TypeScript files in the path
-        const pattern = path.join(fullPath, '**/*.ts');
+        // Convert Windows backslashes to forward slashes for glob compatibility
+        const pattern = path.join(fullPath, '**/*.ts').replace(/\\/g, '/');
         const files = await glob(pattern);
+        
+        // Defensive: Ensure files is iterable
+        if (!files || !Array.isArray(files)) {
+          this.logger.warn(`glob returned non-iterable result for pattern: ${pattern}`);
+          continue;
+        }
 
-        this.logger.debug(`Found ${files.length} files in ${fullPath}`);
+        this.logger.info(`Found ${files.length} TypeScript files in ${fullPath}`, {
+          path: fullPath,
+          fileCount: files.length
+        });
 
         for (const file of files) {
           try {
             // Skip test files and type definition files
             if (file.includes('.test.') || file.includes('.spec.') || file.endsWith('.d.ts')) {
+              this.logger.debug(`Skipping test/type definition file: ${file}`);
               continue;
             }
 
             const tool = await this.loadToolFromFile(file);
             if (tool) {
               result.discovered++;
+              this.logger.debug(`Discovered tool: ${tool.name} from ${file}`);
               try {
                 this.registerTool(tool);
                 result.registered++;
+                this.logger.info(`Successfully registered tool: ${tool.name}`, {
+                  name: tool.name,
+                  category: tool.category,
+                  safety: tool.safety.level
+                });
               } catch (error) {
                 result.failed++;
                 result.errors.push({
                   tool: tool.name,
                   error: (error as Error).message
                 });
+                this.logger.error(`Failed to register tool: ${tool.name}`, error as Error);
               }
             }
           } catch (error) {
@@ -202,10 +264,47 @@ export class ToolRegistry {
     this.logger.info('Tool discovery completed', {
       discovered: result.discovered,
       registered: result.registered,
-      failed: result.failed
+      failed: result.failed,
+      errors: result.errors
     });
 
     return result;
+  }
+
+  /**
+   * Auto-register built-in tools from discord-tools.ts
+   */
+  private async autoRegisterBuiltinTools(): Promise<void> {
+    try {
+      // Import the discord tools module
+      const discordToolsModule = await import('../../tools/discord-tools');
+      
+      // Check if the module exports a discordTools array
+      if (discordToolsModule.discordTools && Array.isArray(discordToolsModule.discordTools)) {
+        const tools = discordToolsModule.discordTools as Tool[];
+        
+        this.logger.info(`Auto-registering ${tools.length} built-in Discord tools`, {
+          toolNames: tools.map(t => t.name)
+        });
+
+        for (const tool of tools) {
+          try {
+            this.registerTool(tool);
+            this.logger.info(`Successfully auto-registered built-in tool: ${tool.name}`, {
+              name: tool.name,
+              category: tool.category,
+              safety: tool.safety.level
+            });
+          } catch (error) {
+            this.logger.error(`Failed to auto-register built-in tool: ${tool.name}`, error as Error);
+          }
+        }
+      } else {
+        this.logger.warn('discordTools array not found in discord-tools module');
+      }
+    } catch (error) {
+      this.logger.error('Failed to auto-register built-in tools', error as Error);
+    }
   }
 
   /**
@@ -214,7 +313,7 @@ export class ToolRegistry {
   private async loadToolFromFile(filePath: string): Promise<Tool | null> {
     try {
       // Clear require cache for dynamic imports
-      delete require.cache[require.resolve(filePath)];
+      // delete require.cache[require.resolve(filePath)];  // ES modules don't support require.cache
 
       // Dynamic import of the module
       const module = await import(filePath);

@@ -122,6 +122,7 @@ export interface ConversationalAIRequest {
   context: ConversationContext;
   config: ConversationalDiscordConfig;
   systemPrompt?: string;
+  tools?: any[];
 }
 
 export interface ConversationalAIResponse {
