@@ -4,6 +4,11 @@ import { PostgresConnectionManager } from '../database/postgres';
 import { RedisConnectionManager } from '../database/redis';
 import { DataLifecycleManager } from './dataLifecycle';
 import { RetentionPolicyManager } from './retentionPolicy';
+import { promisify } from 'util';
+import * as zlib from 'zlib';
+
+const deflate = promisify(zlib.deflate);
+const inflate = promisify(zlib.inflate);
 
 /**
  * Storage tier enumeration representing different data storage levels

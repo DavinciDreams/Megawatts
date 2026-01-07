@@ -172,6 +172,30 @@ export class ConversationalConfigManager {
   }
 
   /**
+   * Load system prompt from file
+   * Reads the content from docs/system-prompt.md and returns it as a string.
+   * Falls back to the default hardcoded prompt if the file doesn't exist or can't be read.
+   */
+  private loadSystemPrompt(): string {
+    const defaultPrompt = 'You are Megawatts, a helpful and intelligent Discord assistant. You are friendly, professional, and always aim to provide accurate and useful information.';
+    
+    try {
+      const systemPromptPath = resolve(process.cwd(), 'docs', 'system-prompt.md');
+      
+      if (!existsSync(systemPromptPath)) {
+        this.logger.warn(`System prompt file not found at ${systemPromptPath}, using default prompt`);
+        return defaultPrompt;
+      }
+      
+      const content = readFileSync(systemPromptPath, 'utf8');
+      return content;
+    } catch (error) {
+      this.logger.error('Failed to load system prompt from file, using default prompt', error);
+      return defaultPrompt;
+    }
+  }
+
+  /**
    * Get default configuration
    */
   private getDefaultConfig(): ConversationalDiscordConfig {
@@ -187,7 +211,7 @@ export class ConversationalConfigManager {
         id: 'megawatts-default',
         name: 'Megawatts',
         description: 'A helpful and intelligent Discord assistant',
-        systemPrompt: 'You are Megawatts, a helpful and intelligent Discord assistant. You are friendly, professional, and always aim to provide accurate and useful information.',
+        systemPrompt: this.loadSystemPrompt(),
         defaultTone: 'friendly',
         defaultFormality: 'casual',
         defaultVerbosity: 'balanced',

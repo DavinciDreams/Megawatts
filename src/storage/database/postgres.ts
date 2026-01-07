@@ -1,7 +1,12 @@
 import { Pool, PoolClient, PoolConfig, QueryResult } from 'pg';
+import { promisify } from 'util';
+import * as zlib from 'zlib';
 import { Logger } from '../../utils/logger';
 import { DatabaseError, DatabaseErrorCode } from '../errors';
 import { StorageTier, DataType } from '../tiered/tieredStorage';
+
+const deflate = promisify(zlib.deflate);
+const inflate = promisify(zlib.inflate);
 
 export interface PostgresConfig extends PoolConfig {
   maxConnections?: number;

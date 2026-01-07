@@ -507,10 +507,16 @@ export class AnthropicProvider extends BaseAIProvider {
   }
 
   private buildAnthropicRequest(request: AIRequest): any {
-    // Convert OpenAI format to Anthropic format
+    // Extract system messages and concatenate them
+    const systemMessages = request.messages
+      .filter(msg => msg.role === 'system')
+      .map(msg => msg.content)
+      .join('\n\n');
+    
+    // Convert non-system messages to Anthropic format
     const messages = this.convertMessagesToAnthropicFormat(request.messages);
     
-    return {
+    const requestBody: any = {
       model: request.model || 'claude-sonnet-4-5-20250929',
       max_tokens: request.maxTokens || 1000,
       messages,
@@ -520,6 +526,13 @@ export class AnthropicProvider extends BaseAIProvider {
       ...(request.tool_choice && { tool_choice: request.tool_choice }),
       stream: false
     };
+    
+    // Add system parameter if there are system messages
+    if (systemMessages) {
+      requestBody.system = systemMessages;
+    }
+    
+    return requestBody;
   }
 
   private convertMessagesToAnthropicFormat(messages: AIMessage[]): any[] {

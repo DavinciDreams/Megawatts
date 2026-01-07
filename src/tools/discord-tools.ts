@@ -17,6 +17,20 @@ import {
 } from '../types/ai';
 import { Logger } from '../utils/logger';
 import { BotError } from '../utils/errors';
+import {
+  Client,
+  Guild,
+  Role,
+  Channel,
+  User,
+  GuildMember,
+  Message,
+  Webhook,
+  PermissionFlagsBits,
+  ChannelType,
+  APIEmbed,
+  APIEmbedField
+} from 'discord.js';
 
 // ============================================================================
 // DISCORD ROLE MANAGEMENT TOOLS
@@ -690,7 +704,7 @@ export const getChannelInfoTool: Tool = {
       name: 'channel_id',
       type: 'string',
       required: true,
-      description: 'The ID of the channel to get info for'
+      description: 'The ID of channel to get info for'
     }
   ],
   metadata: {
@@ -987,7 +1001,7 @@ export const getUserInfoTool: Tool = {
       name: 'user_id',
       type: 'string',
       required: true,
-      description: 'The ID of the user to get info for'
+      description: 'The ID of user to get info for'
     },
     {
       name: 'guild_id',
@@ -1401,7 +1415,7 @@ export const getServerInfoTool: Tool = {
  */
 export const getServerMembersTool: Tool = {
   name: 'get_server_members',
-  description: 'Get the list of members in a Discord server',
+  description: 'Get list of members in a Discord server',
   category: 'discord',
   permissions: [],
   safety: {
@@ -1458,7 +1472,7 @@ export const getServerMembersTool: Tool = {
  */
 export const getServerChannelsTool: Tool = {
   name: 'get_server_channels',
-  description: 'Get the list of channels in a Discord server',
+  description: 'Get list of channels in a Discord server',
   category: 'discord',
   permissions: [],
   safety: {
@@ -1831,23 +1845,109 @@ export const discordTools: Tool[] = [
 ];
 
 // ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Convert permission string array to Discord.js PermissionFlagsBits
+ */
+function parsePermissions(permissions: string[]): bigint {
+  let permissionBits = 0n;
+  for (const perm of permissions) {
+    const flag = PermissionFlagsBits[perm as keyof typeof PermissionFlagsBits];
+    if (flag !== undefined) {
+      permissionBits |= BigInt(flag);
+    }
+  }
+  return permissionBits;
+}
+
+/**
+ * Convert channel type string to Discord.js ChannelType
+ */
+function parseChannelType(type: string): ChannelType {
+  const typeMap: Record<string, ChannelType> = {
+    'text': ChannelType.GuildText,
+    'voice': ChannelType.GuildVoice,
+    'category': ChannelType.GuildCategory,
+    'news': ChannelType.GuildAnnouncement,
+    'store': ChannelType.GuildStore,
+    'stage': ChannelType.GuildStageVoice
+  };
+  return typeMap[type] || ChannelType.GuildText;
+}
+
+/**
+ * Parse hex color to integer
+ */
+function parseColor(color: string): number {
+  return parseInt(color.replace('#', ''), 16);
+}
+
+// ============================================================================
 // TOOL EXECUTOR CLASS
 // ============================================================================
 
 export class DiscordToolExecutor {
   private logger: Logger;
-  private client: any; // Discord.js client - to be injected
+  private client: Client | null;
 
-  constructor(logger: Logger, client?: any) {
+  constructor(logger: Logger, client?: Client) {
     this.logger = logger;
-    this.client = client;
+    this.client = client || null;
   }
 
   /**
    * Set Discord client
    */
-  setClient(client: any): void {
+  setClient(client: Client): void {
     this.client = client;
+  }
+
+  /**
+   * Ensure client is available
+   */
+  private ensureClient(): Client {
+    if (!this.client) {
+      throw new BotError(
+        'Discord client not initialized. Please set the client before executing tools.',
+        'high',
+        { operation: 'ensureClient' }
+      );
+    }
+    return this.client;
+  }
+
+  /**
+   * Get guild by ID
+   */
+  private async getGuild(guildId: string): Promise<Guild> {
+    const client = this.ensureClient();
+    const guild = await client.guilds.fetch(guildId);
+    if (!guild) {
+      throw new BotError(
+        `Guild not found: ${guildId}`,
+        'medium',
+        { guildId }
+      );
+    }
+    return guild;
+  }
+
+  /**
+   * Get channel by ID
+   */
+  private async getChannel(channelId: string): Promise<Channel> {
+    const client = this.ensureClient();
+    const channel = await client.channels.fetch(channelId);
+    if (!channel) {
+      throw new BotError(
+        `Channel not found: ${channelId}`,
+        'medium',
+        { channelId }
+      );
+    }
+    return channel;
   }
 
   /**
@@ -1944,55 +2044,179 @@ export class DiscordToolExecutor {
   // ============================================================================
 
   private async createRole(parameters: any): Promise<any> {
-    this.logger.info('Creating Discord role', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      role_id: 'mock_role_id',
-      message: 'Role created successfully'
-    };
+    const { guild_id, name, color, permissions, hoist, mentionable, position } = parameters;
+    
+    try {
+      const guild = await this.getGuild(guild_id);
+      const role = await guild.roles.create({
+        name,
+        color: color ? parseColor(color) : undefined,
+        permissions: permissions ? parsePermissions(permissions) : undefined,
+        hoist,
+        mentionable,
+        position,
+        reason: parameters.reason
+      });
+
+      this.logger.info(`Role created successfully: ${role.id}`);
+      return {
+        success: true,
+        role_id: role.id,
+        role: {
+          id: role.id,
+          name: role.name,
+          color: role.hexColor,
+          permissions: role.permissions.bitfield.toString(),
+          hoist: role.hoist,
+          mentionable: role.mentionable,
+          position: role.position
+        },
+        message: 'Role created successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to create role', error);
+      throw new BotError(
+        `Failed to create role: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async updateRole(parameters: any): Promise<any> {
-    this.logger.info('Updating Discord role', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      role_id: parameters.role_id,
-      message: 'Role updated successfully'
-    };
+    const { guild_id, role_id, name, color, permissions, hoist, mentionable, position } = parameters;
+    
+    try {
+      const guild = await this.getGuild(guild_id);
+      const role = await guild.roles.fetch(role_id);
+      
+      if (!role) {
+        throw new BotError(`Role not found: ${role_id}`, 'medium', { role_id });
+      }
+
+      await role.edit({
+        name,
+        color: color ? parseColor(color) : undefined,
+        permissions: permissions ? parsePermissions(permissions) : undefined,
+        hoist,
+        mentionable,
+        position,
+        reason: parameters.reason
+      });
+
+      this.logger.info(`Role updated successfully: ${role.id}`);
+      return {
+        success: true,
+        role_id: role.id,
+        message: 'Role updated successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to update role', error);
+      throw new BotError(
+        `Failed to update role: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async deleteRole(parameters: any): Promise<any> {
-    this.logger.info('Deleting Discord role', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      role_id: parameters.role_id,
-      message: 'Role deleted successfully'
-    };
+    const { guild_id, role_id, reason } = parameters;
+    
+    try {
+      const guild = await this.getGuild(guild_id);
+      const role = await guild.roles.fetch(role_id);
+      
+      if (!role) {
+        throw new BotError(`Role not found: ${role_id}`, 'medium', { role_id });
+      }
+
+      await role.delete(reason);
+
+      this.logger.info(`Role deleted successfully: ${role_id}`);
+      return {
+        success: true,
+        role_id,
+        message: 'Role deleted successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to delete role', error);
+      throw new BotError(
+        `Failed to delete role: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async assignRole(parameters: any): Promise<any> {
-    this.logger.info('Assigning role to user', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      user_id: parameters.user_id,
-      role_id: parameters.role_id,
-      message: 'Role assigned successfully'
-    };
+    const { guild_id, user_id, role_id, reason } = parameters;
+    
+    try {
+      const guild = await this.getGuild(guild_id);
+      const member = await guild.members.fetch(user_id);
+      const role = await guild.roles.fetch(role_id);
+      
+      if (!member) {
+        throw new BotError(`Member not found: ${user_id}`, 'medium', { user_id });
+      }
+      
+      if (!role) {
+        throw new BotError(`Role not found: ${role_id}`, 'medium', { role_id });
+      }
+
+      await member.roles.add(role, reason);
+
+      this.logger.info(`Role assigned successfully: ${role_id} to ${user_id}`);
+      return {
+        success: true,
+        user_id,
+        role_id,
+        message: 'Role assigned successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to assign role', error);
+      throw new BotError(
+        `Failed to assign role: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async removeRole(parameters: any): Promise<any> {
-    this.logger.info('Removing role from user', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      user_id: parameters.user_id,
-      role_id: parameters.role_id,
-      message: 'Role removed successfully'
-    };
+    const { guild_id, user_id, role_id, reason } = parameters;
+    
+    try {
+      const guild = await this.getGuild(guild_id);
+      const member = await guild.members.fetch(user_id);
+      const role = await guild.roles.fetch(role_id);
+      
+      if (!member) {
+        throw new BotError(`Member not found: ${user_id}`, 'medium', { user_id });
+      }
+      
+      if (!role) {
+        throw new BotError(`Role not found: ${role_id}`, 'medium', { role_id });
+      }
+
+      await member.roles.remove(role, reason);
+
+      this.logger.info(`Role removed successfully: ${role_id} from ${user_id}`);
+      return {
+        success: true,
+        user_id,
+        role_id,
+        message: 'Role removed successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to remove role', error);
+      throw new BotError(
+        `Failed to remove role: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   // ============================================================================
@@ -2000,47 +2224,151 @@ export class DiscordToolExecutor {
   // ============================================================================
 
   private async createChannel(parameters: any): Promise<any> {
-    this.logger.info('Creating Discord channel', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      channel_id: 'mock_channel_id',
-      message: 'Channel created successfully'
-    };
+    const { guild_id, name, type, topic, nsfw, parent_id, position, permission_overwrites, rate_limit_per_user } = parameters;
+    
+    try {
+      const guild = await this.getGuild(guild_id);
+      const channelType = parseChannelType(type);
+      
+      const channel = await guild.channels.create({
+        name,
+        type: channelType,
+        topic,
+        nsfw,
+        parent: parent_id,
+        position,
+        permissionOverwrites,
+        rateLimitPerUser: rate_limit_per_user,
+        reason: parameters.reason
+      });
+
+      this.logger.info(`Channel created successfully: ${channel.id}`);
+      return {
+        success: true,
+        channel_id: channel.id,
+        channel: {
+          id: channel.id,
+          name: channel.name,
+          type: channel.type,
+          topic: (channel as any).topic,
+          nsfw: (channel as any).nsfw,
+          position: channel.position
+        },
+        message: 'Channel created successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to create channel', error);
+      throw new BotError(
+        `Failed to create channel: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async updateChannel(parameters: any): Promise<any> {
-    this.logger.info('Updating Discord channel', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      channel_id: parameters.channel_id,
-      message: 'Channel updated successfully'
-    };
+    const { channel_id, name, topic, nsfw, position, rate_limit_per_user } = parameters;
+    
+    try {
+      const channel = await this.getChannel(channel_id) as any;
+      
+      if (!channel) {
+        throw new BotError(`Channel not found: ${channel_id}`, 'medium', { channel_id });
+      }
+
+      await channel.edit({
+        name,
+        topic,
+        nsfw,
+        position,
+        rateLimitPerUser: rate_limit_per_user,
+        reason: parameters.reason
+      });
+
+      this.logger.info(`Channel updated successfully: ${channel_id}`);
+      return {
+        success: true,
+        channel_id,
+        message: 'Channel updated successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to update channel', error);
+      throw new BotError(
+        `Failed to update channel: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async deleteChannel(parameters: any): Promise<any> {
-    this.logger.info('Deleting Discord channel', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      channel_id: parameters.channel_id,
-      message: 'Channel deleted successfully'
-    };
+    const { channel_id, reason } = parameters;
+    
+    try {
+      const channel = await this.getChannel(channel_id);
+      
+      if (!channel) {
+        throw new BotError(`Channel not found: ${channel_id}`, 'medium', { channel_id });
+      }
+
+      await channel.delete(reason);
+
+      this.logger.info(`Channel deleted successfully: ${channel_id}`);
+      return {
+        success: true,
+        channel_id,
+        message: 'Channel deleted successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to delete channel', error);
+      throw new BotError(
+        `Failed to delete channel: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async getChannelInfo(parameters: any): Promise<any> {
-    this.logger.info('Getting Discord channel info', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      channel: {
-        id: parameters.channel_id,
-        name: 'Mock Channel',
-        type: 'text',
-        topic: 'Mock topic'
+    const { channel_id } = parameters;
+    
+    try {
+      const channel = await this.getChannel(channel_id);
+      
+      if (!channel) {
+        throw new BotError(`Channel not found: ${channel_id}`, 'medium', { channel_id });
       }
-    };
+
+      const channelData: any = {
+        id: channel.id,
+        name: (channel as any).name,
+        type: channel.type,
+        guild_id: (channel as any).guildId
+      };
+
+      if ('topic' in channel) {
+        channelData.topic = (channel as any).topic;
+      }
+      if ('nsfw' in channel) {
+        channelData.nsfw = (channel as any).nsfw;
+      }
+      if ('position' in channel) {
+        channelData.position = (channel as any).position;
+      }
+
+      this.logger.info(`Channel info retrieved: ${channel_id}`);
+      return {
+        success: true,
+        channel: channelData
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to get channel info', error);
+      throw new BotError(
+        `Failed to get channel info: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   // ============================================================================
@@ -2048,58 +2376,170 @@ export class DiscordToolExecutor {
   // ============================================================================
 
   private async kickUser(parameters: any): Promise<any> {
-    this.logger.info('Kicking Discord user', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      user_id: parameters.user_id,
-      message: 'User kicked successfully'
-    };
+    const { guild_id, user_id, reason } = parameters;
+    
+    try {
+      const guild = await this.getGuild(guild_id);
+      const member = await guild.members.fetch(user_id);
+      
+      if (!member) {
+        throw new BotError(`Member not found: ${user_id}`, 'medium', { user_id });
+      }
+
+      await member.kick(reason);
+
+      this.logger.info(`User kicked successfully: ${user_id}`);
+      return {
+        success: true,
+        user_id,
+        message: 'User kicked successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to kick user', error);
+      throw new BotError(
+        `Failed to kick user: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async banUser(parameters: any): Promise<any> {
-    this.logger.info('Banning Discord user', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      user_id: parameters.user_id,
-      message: 'User banned successfully'
-    };
+    const { guild_id, user_id, reason, delete_message_days } = parameters;
+    
+    try {
+      const guild = await this.getGuild(guild_id);
+      
+      await guild.bans.create(user_id, {
+        reason,
+        deleteMessageSeconds: delete_message_days ? delete_message_days * 86400 : undefined
+      });
+
+      this.logger.info(`User banned successfully: ${user_id}`);
+      return {
+        success: true,
+        user_id,
+        message: 'User banned successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to ban user', error);
+      throw new BotError(
+        `Failed to ban user: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async timeoutUser(parameters: any): Promise<any> {
-    this.logger.info('Timing out Discord user', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      user_id: parameters.user_id,
-      duration_minutes: parameters.duration_minutes,
-      message: 'User timed out successfully'
-    };
+    const { guild_id, user_id, duration_minutes, reason } = parameters;
+    
+    try {
+      const guild = await this.getGuild(guild_id);
+      const member = await guild.members.fetch(user_id);
+      
+      if (!member) {
+        throw new BotError(`Member not found: ${user_id}`, 'medium', { user_id });
+      }
+
+      const timeoutDuration = duration_minutes * 60 * 1000; // Convert to milliseconds
+      await member.timeout(timeoutDuration, reason);
+
+      this.logger.info(`User timed out successfully: ${user_id} for ${duration_minutes} minutes`);
+      return {
+        success: true,
+        user_id,
+        duration_minutes,
+        message: 'User timed out successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to timeout user', error);
+      throw new BotError(
+        `Failed to timeout user: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async removeTimeout(parameters: any): Promise<any> {
-    this.logger.info('Removing timeout from user', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      user_id: parameters.user_id,
-      message: 'Timeout removed successfully'
-    };
+    const { guild_id, user_id, reason } = parameters;
+    
+    try {
+      const guild = await this.getGuild(guild_id);
+      const member = await guild.members.fetch(user_id);
+      
+      if (!member) {
+        throw new BotError(`Member not found: ${user_id}`, 'medium', { user_id });
+      }
+
+      await member.timeout(null, reason);
+
+      this.logger.info(`Timeout removed successfully from user: ${user_id}`);
+      return {
+        success: true,
+        user_id,
+        message: 'Timeout removed successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to remove timeout', error);
+      throw new BotError(
+        `Failed to remove timeout: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async getUserInfo(parameters: any): Promise<any> {
-    this.logger.info('Getting Discord user info', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      user: {
-        id: parameters.user_id,
-        username: 'MockUser',
-        discriminator: '1234',
-        avatar: 'https://example.com/avatar.png'
+    const { user_id, guild_id } = parameters;
+    
+    try {
+      const client = this.ensureClient();
+      let user: User | null = null;
+      let member: GuildMember | null = null;
+
+      if (guild_id) {
+        const guild = await this.getGuild(guild_id);
+        member = await guild.members.fetch(user_id).catch(() => null);
+        user = member?.user || null;
       }
-    };
+
+      if (!user) {
+        user = await client.users.fetch(user_id).catch(() => null);
+      }
+
+      if (!user) {
+        throw new BotError(`User not found: ${user_id}`, 'medium', { user_id });
+      }
+
+      const userData: any = {
+        id: user.id,
+        username: user.username,
+        discriminator: user.discriminator,
+        avatar: user.avatarURL(),
+        bot: user.bot
+      };
+
+      if (member) {
+        userData.joined_at = member.joinedAt?.toISOString();
+        userData.roles = Array.from(member.roles.cache.keys());
+        userData.nickname = member.nickname;
+      }
+
+      this.logger.info(`User info retrieved: ${user_id}`);
+      return {
+        success: true,
+        user: userData
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to get user info', error);
+      throw new BotError(
+        `Failed to get user info: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   // ============================================================================
@@ -2107,72 +2547,205 @@ export class DiscordToolExecutor {
   // ============================================================================
 
   private async sendMessage(parameters: any): Promise<any> {
-    this.logger.info('Sending Discord message', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      message_id: 'mock_message_id',
-      channel_id: parameters.channel_id,
-      message: 'Message sent successfully'
-    };
+    const { channel_id, content, embed, tts, reply_to } = parameters;
+    
+    try {
+      const channel = await this.getChannel(channel_id) as any;
+      
+      if (!channel || !channel.send) {
+        throw new BotError(`Cannot send messages to channel: ${channel_id}`, 'medium', { channel_id });
+      }
+
+      const messageOptions: any = {
+        content,
+        tts,
+        embeds: embed ? [embed] : undefined
+      };
+
+      if (reply_to) {
+        messageOptions.reply = { messageReference: reply_to };
+      }
+
+      const message = await channel.send(messageOptions);
+
+      this.logger.info(`Message sent successfully to channel: ${channel_id}`);
+      return {
+        success: true,
+        message_id: message.id,
+        channel_id,
+        message: 'Message sent successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to send message', error);
+      throw new BotError(
+        `Failed to send message: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async editMessage(parameters: any): Promise<any> {
-    this.logger.info('Editing Discord message', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      message_id: parameters.message_id,
-      message: 'Message edited successfully'
-    };
+    const { channel_id, message_id, content, embed } = parameters;
+    
+    try {
+      const channel = await this.getChannel(channel_id) as any;
+      
+      if (!channel || !channel.messages) {
+        throw new BotError(`Cannot edit messages in channel: ${channel_id}`, 'medium', { channel_id });
+      }
+
+      const message = await channel.messages.fetch(message_id);
+      
+      const messageOptions: any = {
+        content,
+        embeds: embed ? [embed] : undefined
+      };
+
+      await message.edit(messageOptions);
+
+      this.logger.info(`Message edited successfully: ${message_id}`);
+      return {
+        success: true,
+        message_id,
+        message: 'Message edited successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to edit message', error);
+      throw new BotError(
+        `Failed to edit message: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async deleteMessage(parameters: any): Promise<any> {
-    this.logger.info('Deleting Discord message', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      message_id: parameters.message_id,
-      message: 'Message deleted successfully'
-    };
+    const { channel_id, message_id, reason } = parameters;
+    
+    try {
+      const channel = await this.getChannel(channel_id) as any;
+      
+      if (!channel || !channel.messages) {
+        throw new BotError(`Cannot delete messages from channel: ${channel_id}`, 'medium', { channel_id });
+      }
+
+      const message = await channel.messages.fetch(message_id);
+      await message.delete(reason);
+
+      this.logger.info(`Message deleted successfully: ${message_id}`);
+      return {
+        success: true,
+        message_id,
+        message: 'Message deleted successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to delete message', error);
+      throw new BotError(
+        `Failed to delete message: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async getMessage(parameters: any): Promise<any> {
-    this.logger.info('Getting Discord message', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      message: {
-        id: parameters.message_id,
-        channel_id: parameters.channel_id,
-        content: 'Mock message content',
-        author: {
-          id: '987654321098765432',
-          username: 'MockUser'
-        },
-        timestamp: new Date().toISOString()
+    const { channel_id, message_id } = parameters;
+    
+    try {
+      const channel = await this.getChannel(channel_id) as any;
+      
+      if (!channel || !channel.messages) {
+        throw new BotError(`Cannot fetch messages from channel: ${channel_id}`, 'medium', { channel_id });
       }
-    };
+
+      const message = await channel.messages.fetch(message_id);
+
+      const messageData = {
+        id: message.id,
+        channel_id: message.channelId,
+        content: message.content,
+        author: {
+          id: message.author.id,
+          username: message.author.username,
+          discriminator: message.author.discriminator,
+          avatar: message.author.avatarURL()
+        },
+        timestamp: message.createdAt.toISOString(),
+        edited_timestamp: message.editedAt?.toISOString() || null
+      };
+
+      this.logger.info(`Message retrieved: ${message_id}`);
+      return {
+        success: true,
+        message: messageData
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to get message', error);
+      throw new BotError(
+        `Failed to get message: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async pinMessage(parameters: any): Promise<any> {
-    this.logger.info('Pinning Discord message', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      message_id: parameters.message_id,
-      message: 'Message pinned successfully'
-    };
+    const { channel_id, message_id } = parameters;
+    
+    try {
+      const channel = await this.getChannel(channel_id) as any;
+      
+      if (!channel || !channel.messages) {
+        throw new BotError(`Cannot pin messages in channel: ${channel_id}`, 'medium', { channel_id });
+      }
+
+      const message = await channel.messages.fetch(message_id);
+      await message.pin();
+
+      this.logger.info(`Message pinned successfully: ${message_id}`);
+      return {
+        success: true,
+        message_id,
+        message: 'Message pinned successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to pin message', error);
+      throw new BotError(
+        `Failed to pin message: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async unpinMessage(parameters: any): Promise<any> {
-    this.logger.info('Unpinning Discord message', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      message_id: parameters.message_id,
-      message: 'Message unpinned successfully'
-    };
+    const { channel_id, message_id } = parameters;
+    
+    try {
+      const channel = await this.getChannel(channel_id) as any;
+      
+      if (!channel || !channel.messages) {
+        throw new BotError(`Cannot unpin messages in channel: ${channel_id}`, 'medium', { channel_id });
+      }
+
+      const message = await channel.messages.fetch(message_id);
+      await message.unpin();
+
+      this.logger.info(`Message unpinned successfully: ${message_id}`);
+      return {
+        success: true,
+        message_id,
+        message: 'Message unpinned successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to unpin message', error);
+      throw new BotError(
+        `Failed to unpin message: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   // ============================================================================
@@ -2180,43 +2753,114 @@ export class DiscordToolExecutor {
   // ============================================================================
 
   private async getServerInfo(parameters: any): Promise<any> {
-    this.logger.info('Getting Discord server info', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      server: {
-        id: parameters.guild_id,
-        name: 'Mock Server',
-        owner_id: '123456789012345678',
-        member_count: 100,
-        channel_count: 10,
-        region: 'us-east'
-      }
-    };
+    const { guild_id } = parameters;
+    
+    try {
+      const guild = await this.getGuild(guild_id);
+
+      const serverData = {
+        id: guild.id,
+        name: guild.name,
+        owner_id: guild.ownerId,
+        member_count: guild.memberCount,
+        channel_count: guild.channels.cache.size,
+        role_count: guild.roles.cache.size,
+        region: guild.preferredLocale,
+        created_at: guild.createdAt.toISOString(),
+        icon: guild.iconURL(),
+        description: guild.description,
+        features: guild.features
+      };
+
+      this.logger.info(`Server info retrieved: ${guild_id}`);
+      return {
+        success: true,
+        server: serverData
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to get server info', error);
+      throw new BotError(
+        `Failed to get server info: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async getServerMembers(parameters: any): Promise<any> {
-    this.logger.info('Getting Discord server members', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      members: [
-        { id: '987654321098765432', username: 'User1' },
-        { id: '123456789012345678', username: 'User2' }
-      ].slice(0, parameters.limit || 50)
-    };
+    const { guild_id, limit, after } = parameters;
+    
+    try {
+      const guild = await this.getGuild(guild_id);
+      
+      const members = await guild.members.fetch({
+        limit: limit || 100,
+        after: after
+      });
+
+      const membersList = members.map(member => ({
+        id: member.user.id,
+        username: member.user.username,
+        discriminator: member.user.discriminator,
+        nickname: member.nickname,
+        roles: Array.from(member.roles.cache.keys()),
+        joined_at: member.joinedAt?.toISOString(),
+        bot: member.user.bot
+      }));
+
+      this.logger.info(`Server members retrieved: ${guild_id} (${membersList.length} members)`);
+      return {
+        success: true,
+        members: membersList,
+        total: membersList.length
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to get server members', error);
+      throw new BotError(
+        `Failed to get server members: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async getServerChannels(parameters: any): Promise<any> {
-    this.logger.info('Getting Discord server channels', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      channels: [
-        { id: '111222333444555666', name: 'general', type: 'text' },
-        { id: '222333444555666777', name: 'voice', type: 'voice' }
-      ]
-    };
+    const { guild_id, type } = parameters;
+    
+    try {
+      const guild = await this.getGuild(guild_id);
+      
+      let channels = guild.channels.cache;
+      
+      if (type) {
+        const channelType = parseChannelType(type);
+        channels = channels.filter(ch => ch.type === channelType);
+      }
+
+      const channelsList = channels.map(channel => ({
+        id: channel.id,
+        name: channel.name,
+        type: channel.type,
+        topic: (channel as any).topic,
+        nsfw: (channel as any).nsfw,
+        position: (channel as any).position,
+        parent_id: (channel as any).parentId
+      }));
+
+      this.logger.info(`Server channels retrieved: ${guild_id} (${channelsList.length} channels)`);
+      return {
+        success: true,
+        channels: channelsList,
+        total: channelsList.length
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to get server channels', error);
+      throw new BotError(
+        `Failed to get server channels: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   // ============================================================================
@@ -2224,44 +2868,127 @@ export class DiscordToolExecutor {
   // ============================================================================
 
   private async createWebhook(parameters: any): Promise<any> {
-    this.logger.info('Creating Discord webhook', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      webhook_id: 'mock_webhook_id',
-      webhook_token: 'mock_token',
-      url: 'https://discord.com/api/webhooks/mock_id/mock_token',
-      message: 'Webhook created successfully'
-    };
+    const { channel_id, name, avatar, reason } = parameters;
+    
+    try {
+      const channel = await this.getChannel(channel_id) as any;
+      
+      if (!channel || !channel.createWebhook) {
+        throw new BotError(`Cannot create webhooks in channel: ${channel_id}`, 'medium', { channel_id });
+      }
+
+      const webhook = await channel.createWebhook({
+        name,
+        avatar,
+        reason
+      });
+
+      this.logger.info(`Webhook created successfully: ${webhook.id}`);
+      return {
+        success: true,
+        webhook_id: webhook.id,
+        webhook_token: webhook.token,
+        url: webhook.url,
+        message: 'Webhook created successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to create webhook', error);
+      throw new BotError(
+        `Failed to create webhook: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async updateWebhook(parameters: any): Promise<any> {
-    this.logger.info('Updating Discord webhook', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      webhook_id: parameters.webhook_id,
-      message: 'Webhook updated successfully'
-    };
+    const { webhook_id, webhook_token, name, avatar, channel_id } = parameters;
+    
+    try {
+      const client = this.ensureClient();
+      const webhook = await client.fetchWebhook(webhook_id, webhook_token);
+      
+      if (!webhook) {
+        throw new BotError(`Webhook not found: ${webhook_id}`, 'medium', { webhook_id });
+      }
+
+      await webhook.edit({
+        name,
+        avatar,
+        channel: channel_id
+      });
+
+      this.logger.info(`Webhook updated successfully: ${webhook_id}`);
+      return {
+        success: true,
+        webhook_id,
+        message: 'Webhook updated successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to update webhook', error);
+      throw new BotError(
+        `Failed to update webhook: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async deleteWebhook(parameters: any): Promise<any> {
-    this.logger.info('Deleting Discord webhook', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      webhook_id: parameters.webhook_id,
-      message: 'Webhook deleted successfully'
-    };
+    const { webhook_id, webhook_token, reason } = parameters;
+    
+    try {
+      const client = this.ensureClient();
+      const webhook = await client.fetchWebhook(webhook_id, webhook_token);
+      
+      if (!webhook) {
+        throw new BotError(`Webhook not found: ${webhook_id}`, 'medium', { webhook_id });
+      }
+
+      await webhook.delete(reason);
+
+      this.logger.info(`Webhook deleted successfully: ${webhook_id}`);
+      return {
+        success: true,
+        webhook_id,
+        message: 'Webhook deleted successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to delete webhook', error);
+      throw new BotError(
+        `Failed to delete webhook: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 
   private async executeWebhook(parameters: any): Promise<any> {
-    this.logger.info('Executing Discord webhook', parameters);
-    // TODO: Implement actual Discord API call
-    return {
-      success: true,
-      message_id: 'mock_message_id',
-      message: 'Webhook executed successfully'
-    };
+    const { webhook_url, content, embeds, username, avatar_url, tts } = parameters;
+    
+    try {
+      const axios = await import('axios');
+      const response = await axios.default.post(webhook_url, {
+        content,
+        embeds,
+        username,
+        avatar_url,
+        tts
+      });
+
+      this.logger.info(`Webhook executed successfully: ${webhook_url}`);
+      return {
+        success: true,
+        message_id: response.data.id,
+        message: 'Webhook executed successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to execute webhook', error);
+      throw new BotError(
+        `Failed to execute webhook: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
   }
 }
