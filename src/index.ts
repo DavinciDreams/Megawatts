@@ -11,6 +11,7 @@ import { RedisConnectionManager } from './storage/database/redis';
 import { DistributedLock } from './utils/distributed-lock';
 import { ConversationalDiscordConfig } from './types/conversational';
 import { conversationalConfigManager } from './config/conversationalConfigManager';
+import { aiSDKConfigManager, type AIAdapterConfig } from './config/ai-sdk-config';
 import {
   createDiscordBotIntegration,
   DiscordBotIntegration,
@@ -21,6 +22,7 @@ import {
 import { ContextManager } from './ai/core/context-manager';
 import { TieredStorageManager } from './storage/tiered/tieredStorage';
 import { ToolRegistry, ToolRegistryConfig } from './ai/tools/tool-registry';
+import { AISDKAdapter } from './ai/sdk/ai-sdk-adapter';
 import { sendLongReply } from './utils/discord-message-helper';
 
 // Load environment variables FIRST
@@ -29,7 +31,11 @@ dotenv.config();
 // Reload conversational config manager after loading environment variables
 // This is necessary because the singleton is created before dotenv.config() is called
 conversationalConfigManager.reload();
-console.log('[DEBUG] Reloaded conversational config after dotenv');
+
+// Reload AI SDK config manager after loading environment variables
+// This is necessary because the singleton is created before dotenv.config() is called
+aiSDKConfigManager.reload();
+console.log('[DEBUG] Reloaded conversational and AI SDK config after dotenv');
 
 // Debug: Log environment loading
 console.log('[DEBUG] Environment variables loaded:');

@@ -1,3 +1,6 @@
+import { AISDKConfigManager, AISDKFeatureFlags, AISDKConfig } from './ai-sdk-config';
+import { AISDKAdapter, type AIAdapterConfig } from '../ai/sdk/ai-sdk-adapter';
+
 // Legacy configuration interface for backward compatibility
 export interface BotConfig {
   discordToken: string;
@@ -170,3 +173,6 @@ export enum GatewayIntent {
 }
 
 export default SelfEditingDiscordBot;
+
+// Export AI SDK configuration
+export { AISDKConfigManager, AISDKFeatureFlags, AISDKConfig };

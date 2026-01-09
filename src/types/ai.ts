@@ -1,9 +1,11 @@
 /**
  * AI and Tool Calling Type Definitions
- * 
+ *
  * This file contains comprehensive TypeScript interfaces and types
  * for AI integration and tool calling system.
  */
+
+import { z } from 'zod';
 
 // ============================================================================
 // CORE AI TYPES
@@ -80,6 +82,7 @@ export interface ProviderConfig {
   modelPath?: string;
   rateLimit?: RateLimit;
   fallback?: FallbackConfig;
+  useAISDKForProviders?: boolean;
 }
 
 export interface ProviderHealth {
@@ -1355,4 +1358,116 @@ export interface ValidationResult {
   isValid: boolean;
   errors: string[];
   warnings: string[];
+}
+
+// ============================================================================
+// AI SDK TYPES (Hybrid Integration)
+// ============================================================================
+
+/**
+ * AI SDK-compatible tool definition
+ */
+export interface AISDKTool {
+  description: string;
+  parameters: z.ZodType<any, any, any>;
+  execute: (parameters: any) => Promise<any>;
+}
+
+/**
+ * Adapter configuration for hybrid AI SDK approach
+ */
+export interface AIAdapterConfig {
+  useAISDK: boolean;
+  useAISDKForExecution: boolean;
+  useAISDKForProviders: boolean;
+  enableStreaming: boolean;
+  enableMultiStep: boolean;
+}
+
+/**
+ * Conversion options for tool format conversion
+ */
+export interface ConversionOptions {
+  preserveSafetyMetadata: boolean;
+  includeExamples: boolean;
+}
+
+/**
+ * Created provider instance from factory
+ */
+export interface CreatedProvider {
+  type: 'openai' | 'anthropic' | 'openrouter';
+  provider: any;
+  config: ProviderConfig;
+}
+
+/**
+ * Provider factory configuration
+ */
+export interface ProviderFactoryConfig {
+  openai?: {
+    apiKey?: string;
+    baseURL?: string;
+    timeout?: number;
+  };
+  anthropic?: {
+    apiKey?: string;
+    baseURL?: string;
+    timeout?: number;
+  };
+  openrouter?: {
+    apiKey?: string;
+    baseURL?: string;
+    timeout?: number;
+    customHeaders?: Record<string, string>;
+  };
+}
+
+/**
+ * Feature flags for AI SDK rollout
+ */
+export interface AISDKFeatureFlags {
+  useAISDK: boolean;
+  useAISDKForExecution: boolean;
+  useAISDKForProviders: boolean;
+  useAISDKForValidation: boolean;
+  useAISDKForStreaming: boolean;
+}
+
+/**
+ * AI SDK execution context
+ */
+export interface AISDKExecutionContext {
+  userId: string;
+  guildId?: string;
+  channelId?: string;
+  permissions: string[];
+  requestId: string;
+  timestamp: Date;
+  toolName?: string;
+}
+
+/**
+ * AI SDK tool execution result
+ */
+export interface AISDKToolResult {
+  toolName: string;
+  success: boolean;
+  result?: any;
+  error?: {
+    code: string;
+    message: string;
+    details?: any;
+  };
+  executionTime: number;
+  timestamp: Date;
+}
+
+/**
+ * Zod validation result
+ */
+export interface ZodValidationResult {
+  valid: boolean;
+  errors: string[];
+  data?: any;
 }

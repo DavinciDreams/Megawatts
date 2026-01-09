@@ -21,6 +21,8 @@ import {
   ToolMetadata,
   ToolExample
 } from '../../types/ai';
+import { AISDKAdapter, AIAdapterConfig } from '../sdk/ai-sdk-adapter';
+import { ToolConverter, ConversionOptions } from '../sdk/tool-converter';
 import { Logger, LogLevel } from '../../utils/logger';
 import { BotError } from '../../utils/errors';
 
@@ -120,8 +122,13 @@ export class ToolRegistry {
   private executionHistory: ToolExecutionResult[] = [];
   private performanceMetrics: Map<string, PerformanceMetrics> = new Map();
   private rateLimiters: Map<string, RateLimiter> = new Map();
+  
+  // AI SDK integration
+  private aiSDKAdapter: AISDKAdapter;
+  private toolConverter: ToolConverter;
+  private aiSDKConfig: AIAdapterConfig;
 
-  constructor(config: ToolRegistryConfig, logger: Logger) {
+  constructor(config: ToolRegistryConfig, logger: Logger, aiSDKConfig?: Partial<AIAdapterConfig>) {
     this.logger = logger;
     this.config = config;
     this.dependencyGraph = {
@@ -130,6 +137,23 @@ export class ToolRegistry {
       reverseEdges: new Map()
     };
     this.initializeCategories();
+    
+    // Initialize AI SDK components
+    this.aiSDKConfig = {
+      useAISDK: aiSDKConfig?.useAISDK ?? false,
+      useAISDKForExecution: aiSDKConfig?.useAISDKForExecution ?? false,
+      useAISDKForProviders: aiSDKConfig?.useAISDKForProviders ?? false,
+      enableStreaming: aiSDKConfig?.enableStreaming ?? true,
+      enableMultiStep: aiSDKConfig?.enableMultiStep ?? true
+    };
+    this.aiSDKAdapter = new AISDKAdapter(this.aiSDKConfig, logger);
+    this.toolConverter = new ToolConverter(logger);
+    
+    this.logger.info('ToolRegistry initialized', {
+      aiSDKEnabled: this.aiSDKConfig.useAISDK,
+      aiSDKExecution: this.aiSDKConfig.useAISDKForExecution,
+      aiSDKProviders: this.aiSDKConfig.useAISDKForProviders
+    });
   }
 
   /**
@@ -1043,6 +1067,176 @@ export class ToolRegistry {
       limiter.reset();
       this.logger.debug(`Reset rate limiter for tool: ${toolName}`);
     }
+  }
+
+  // ============================================================================
+  // AI SDK INTEGRATION METHODS
+  // ============================================================================
+
+  /**
+   * Get AI SDK adapter instance
+   */
+  getAISDKAdapter(): AISDKAdapter {
+    return this.aiSDKAdapter;
+  }
+
+  /**
+   * Get AI SDK configuration
+   */
+  getAISDKConfig(): AIAdapterConfig {
+    return { ...this.aiSDKConfig };
+  }
+
+  /**
+   * Update AI SDK configuration
+   */
+  updateAISDKConfig(config: Partial<AIAdapterConfig>): void {
+    this.aiSDKConfig = { ...this.aiSDKConfig, ...config };
+    this.aiSDKAdapter.updateConfig(config);
+    this.logger.info('AI SDK configuration updated', { config: this.aiSDKConfig });
+  }
+
+  /**
+   * Convert all registered tools to AI SDK format
+   */
+  getToolsAsAISDK(): any[] {
+    const tools = this.getAllTools();
+    return this.aiSDKAdapter.convertToolsToAISDK(tools);
+  }
+
+  /**
+   * Convert all registered tools to OpenAI format
+   */
+  getToolsAsOpenAIFormat(): any[] {
+    const tools = this.getAllTools();
+    return this.aiSDKAdapter.convertToolsToOpenAIFormat(tools);
+  }
+
+  /**
+   * Convert specific tool to AI SDK format
+   */
+  getToolAsAISDK(toolName: string): any | null {
+    const tool = this.getTool(toolName);
+    if (!tool) {
+      return null;
+    }
+    return this.toolConverter.convertToAISDK(tool);
+  }
+
+  /**
+   * Convert specific tool to OpenAI format
+   */
+  getToolAsOpenAIFormat(toolName: string): any | null {
+    const tool = this.getTool(toolName);
+    if (!tool) {
+      return null;
+    }
+    return this.toolConverter.convertToOpenAIFormat(tool);
+  }
+
+  /**
+   * Validate tool parameters using AI SDK (Zod)
+   */
+  validateToolParametersWithAISDK(toolName: string, args: Record<string, any>): {
+    valid: boolean;
+    errors: string[];
+  } {
+    const tool = this.getTool(toolName);
+    if (!tool) {
+      return {
+        valid: false,
+        errors: [`Tool '${toolName}' not found`]
+      };
+    }
+    return this.aiSDKAdapter.validateToolParameters(tool, args);
+  }
+
+  /**
+   * Check if AI SDK should be used for tool execution
+   */
+  shouldUseAISDKForExecution(): boolean {
+    return this.aiSDKAdapter.shouldUseAISDK('execution');
+  }
+
+  /**
+   * Check if AI SDK should be used for providers
+   */
+  shouldUseAISDKForProviders(): boolean {
+    return this.aiSDKAdapter.shouldUseAISDK('providers');
+  }
+
+  /**
+   * Get tool converter instance
+   */
+  getToolConverter(): ToolConverter {
+    return this.toolConverter;
+  }
+
+  /**
+   * Batch validate multiple tools with AI SDK
+   */
+  batchValidateToolsWithAISDK(tools: Tool[]): Map<string, { valid: boolean; errors: string[] }> {
+    const results = new Map<string, { valid: boolean; errors: string[] }>();
+    for (const tool of tools) {
+      const validation = this.aiSDKAdapter.validateToolParameters(tool, {});
+      results.set(tool.name, validation);
+    }
+    return results;
+  }
+
+  /**
+   * Get conversion statistics for all tools
+   */
+  getConversionStats(): {
+    totalTools: number;
+    convertedTools: number;
+    failedTools: number;
+    errors: string[];
+  } {
+    const tools = this.getAllTools();
+    return this.toolConverter.getConversionStats(tools);
+  }
+
+  /**
+   * Enable AI SDK for specific operations
+   */
+  enableAISDKFor(operations: ('execution' | 'providers' | 'validation')[]): void {
+    const updates: Partial<AIAdapterConfig> = {};
+    for (const op of operations) {
+      switch (op) {
+        case 'execution':
+          updates.useAISDKForExecution = true;
+          break;
+        case 'providers':
+          updates.useAISDKForProviders = true;
+          break;
+        case 'validation':
+          updates.useAISDK = true;
+          break;
+      }
+    }
+    this.updateAISDKConfig(updates);
+  }
+
+  /**
+   * Disable AI SDK for specific operations
+   */
+  disableAISDKFor(operations: ('execution' | 'providers' | 'validation')[]): void {
+    const updates: Partial<AIAdapterConfig> = {};
+    for (const op of operations) {
+      switch (op) {
+        case 'execution':
+          updates.useAISDKForExecution = false;
+          break;
+        case 'providers':
+          updates.useAISDKForProviders = false;
+          break;
+        case 'validation':
+          updates.useAISDK = false;
+          break;
+      }
+    }
+    this.updateAISDKConfig(updates);
   }
 }
 

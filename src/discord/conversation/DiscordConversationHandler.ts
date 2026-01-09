@@ -1,8 +1,8 @@
 /**
  * Discord Conversation Handler
- * 
- * This module implements the main handler for conversational Discord mode,
- * processing messages through the AI integration pipeline.
+ *
+ * This module implements main handler for conversational Discord mode,
+ * processing messages through AI integration pipeline.
  */
 
 import {
@@ -29,6 +29,9 @@ import { EmergencyStopHandler } from '../emotional/EmergencyStopHandler';
 import { Logger } from '../../utils/logger';
 import { ToolRegistry } from '../../ai/tools/tool-registry';
 import { Tool } from '../../types/ai';
+import { ToolExecutor, ExecutionContext, ToolExecutionResult, ToolHandlerFunction } from '../../ai/tools/tool-executor';
+import { ToolSandbox, SandboxConfig } from '../../ai/tools/tool-sandbox';
+import { DiscordToolExecutor } from '../../tools/discord-tools';
 
 // ============================================================================
 // DISCORD CONVERSATION HANDLER CLASS
@@ -42,6 +45,8 @@ export class DiscordConversationHandler {
   private emotionalIntelligenceEngine: EmotionalIntelligenceEngine;
   private emergencyStopHandler: EmergencyStopHandler;
   private toolRegistry: ToolRegistry;
+  private toolExecutor: ToolExecutor;
+  private toolSandbox: ToolSandbox;
   private logger: Logger;
   private activeConversations: Map<string, ConversationContext> = new Map();
 
@@ -63,6 +68,42 @@ export class DiscordConversationHandler {
     this.emergencyStopHandler = emergencyStopHandler;
     this.toolRegistry = toolRegistry;
     this.logger = logger;
+    
+    // Initialize tool executor for handling tool calls
+    const sandboxConfig: SandboxConfig = {
+      enabled: false, // Sandbox disabled for now
+      timeoutMs: 30000,
+      maxMemoryMB: 512,
+      maxCpuPercent: 80,
+      enableNetworkIsolation: false,
+      enableFileSystemIsolation: false,
+      enableApiRestrictions: false,
+      allowedDomains: [],
+      blockedPaths: [],
+      allowedApis: [],
+      blockedApis: []
+    };
+    
+    this.toolSandbox = new ToolSandbox(sandboxConfig, this.logger);
+    
+    // Create Discord tool executor
+    const discordToolExecutor = new DiscordToolExecutor(this.logger);
+    
+    this.toolExecutor = new ToolExecutor(
+      this.toolRegistry,
+      this.toolSandbox,
+      {
+        maxConcurrentExecutions: 5,
+        defaultTimeout: 30000,
+        enableRateLimiting: true,
+        enableMonitoring: true,
+        sandboxMode: false,
+        retryAttempts: 3,
+        retryDelay: 1000
+      },
+      this.logger,
+      this.createToolHandler.bind(this)
+    );
 
     this.logger.info('DiscordConversationHandler initialized', {
       enabled: config.enabled,
@@ -76,10 +117,11 @@ export class DiscordConversationHandler {
   }
 
   /**
-   * Process a Discord message through the conversational pipeline
+   * Process a Discord message through conversational pipeline
    */
   async processMessage(message: DiscordMessage): Promise<ConversationResponse> {
     try {
+      this.logger.info('[DEBUG-TOOL] toolCalling enabled:', { toolCalling: this.config.features.toolCalling });
       this.logger.debug('Processing Discord message', {
         messageId: message.id,
         userId: message.author.id,
@@ -104,7 +146,7 @@ export class DiscordConversationHandler {
       }
 
       // Check if message is a command (starts with !)
-      // In hybrid mode, commands should be handled by the command handler, not conversational mode
+      // In hybrid mode, commands should be handled by command handler, not conversational mode
       if (message.content.startsWith('!')) {
         this.logger.info(`[CONV-SKIP] Skipping command message: "${message.content}" - should be handled by command handler`);
         return {
@@ -190,7 +232,7 @@ export class DiscordConversationHandler {
           message.content,
           conversationContext.messageHistory
         );
-        
+
         // Update conversation context with emotional analysis
         conversationContext.emotionalContext = emotionalContext;
 
@@ -238,17 +280,92 @@ export class DiscordConversationHandler {
       // Route to AI provider and get response
       const aiResponse = await this.aiProvider.routeRequest(conversationalRequest);
 
-      // Add AI response to history
-      conversationContext.messageHistory.push({
-        role: 'assistant',
-        content: aiResponse.content,
-        timestamp: new Date(),
-        metadata: {
-          provider: aiResponse.provider,
-          model: aiResponse.model,
-          tokensUsed: aiResponse.tokensUsed,
-        },
-      });
+      // Handle tool calls if present in AI response
+      if (aiResponse.toolCalls && aiResponse.toolCalls.length > 0) {
+        this.logger.info('[TOOL-CALL] AI returned tool calls', {
+          toolCount: aiResponse.toolCalls.length,
+          tools: aiResponse.toolCalls.map(tc => tc.name)
+        });
+
+        // Execute tool calls
+        const toolResults = await this.executeToolCalls(aiResponse.toolCalls, conversationContext);
+
+        // Add tool results to message history for multi-turn conversation
+        for (const toolResult of toolResults) {
+          conversationContext.messageHistory.push({
+            role: 'tool',
+            content: JSON.stringify({
+              tool: toolResult.toolName,
+              result: toolResult.result,
+              error: toolResult.error
+            }),
+            timestamp: new Date(),
+            metadata: {
+              toolExecution: toolResult.success,
+              executionTime: toolResult.executionTime
+            }
+          });
+        }
+
+        // Re-send to AI with tool results for final response
+        this.logger.info('[TOOL-CALL] Re-sending to AI with tool results');
+        const toolResultsMessage = toolResults
+          .filter(r => r.success)
+          .map(r => `Tool ${r.toolName} result: ${JSON.stringify(r.result)}`)
+          .join('\n');
+
+        // Add tool results message as user message
+        conversationContext.messageHistory.push({
+          role: 'user',
+          content: toolResultsMessage,
+          timestamp: new Date()
+        });
+
+        // Get final AI response
+        const finalAiResponse = await this.aiProvider.routeRequest(conversationalRequest);
+
+        // Add final AI response to history
+        conversationContext.messageHistory.push({
+          role: 'assistant',
+          content: finalAiResponse.content,
+          timestamp: new Date(),
+          metadata: {
+            provider: finalAiResponse.provider,
+            model: finalAiResponse.model,
+            tokensUsed: finalAiResponse.tokensUsed,
+          },
+        });
+
+        // Return final AI response
+        return {
+          content: finalAiResponse.content,
+          tone: this.config.tone,
+          emotion: conversationContext.emotionalContext?.emotion?.primary,
+          metadata: {
+            conversationId,
+            provider: finalAiResponse.provider,
+            model: finalAiResponse.model,
+            tokensUsed: finalAiResponse.tokensUsed,
+            processingTime: finalAiResponse.metadata?.processingTime,
+            crossChannelContext: discordContext?.crossChannelContext,
+            temporalContext: discordContext?.temporalContext,
+            emotionalAdaptations: this.config.emotionalIntelligence.enabled,
+            toolCallsExecuted: toolResults.length,
+          },
+        };
+      } else {
+        // Add AI response to history (no tool calls)
+        conversationContext.messageHistory.push({
+          role: 'assistant',
+          content: aiResponse.content,
+          timestamp: new Date(),
+          metadata: {
+            provider: aiResponse.provider,
+            model: aiResponse.model,
+            tokensUsed: aiResponse.tokensUsed,
+          },
+        });
+      }
 
       // Trim again if needed
       if (conversationContext.messageHistory.length > this.config.contextWindow) {
@@ -294,7 +411,6 @@ export class DiscordConversationHandler {
       });
 
       return response;
-
     } catch (error) {
       this.logger.error('Failed to process Discord message', error as Error);
       return {
@@ -348,7 +464,6 @@ export class DiscordConversationHandler {
       this.logger.info('Conversation started', { conversationId });
 
       return conversationId;
-
     } catch (error) {
       this.logger.error('Failed to start conversation', error as Error);
       throw error;
@@ -369,7 +484,6 @@ export class DiscordConversationHandler {
       await this.conversationManager.endConversation(conversationId, 'user_request');
 
       this.logger.info('Conversation ended', { conversationId });
-
     } catch (error) {
       this.logger.error('Failed to end conversation', error as Error);
       throw error;
@@ -450,9 +564,10 @@ export class DiscordConversationHandler {
 
     // Get all tools from registry
     const tools = this.toolRegistry.getAllTools();
+    this.logger.info('[DEBUG-TOOL] getToolsForRequest returning:', { tools: tools ? `${tools.length} tools` : 'undefined' });
 
     // Convert tools to OpenAI format for AI providers
-    return tools.map(tool => ({
+    const convertedTools = tools.map(tool => ({
       type: 'function',
       function: {
         name: tool.name,
@@ -479,20 +594,67 @@ export class DiscordConversationHandler {
         },
       },
     }));
+    
+    // DEBUG: Log the exact tool schema being generated in OpenAI format
+    this.logger.info('[DEBUG-TOOL-SCHEMA] Generated OpenAI format tools:', { tools: JSON.stringify(convertedTools, null, 2) });
+    
+    return convertedTools;
   }
 
   /**
-   * Get user preferences (placeholder implementation)
+   * Execute tool calls
    */
-  private getUserPreferences(userId: string): UserPreferences {
-    // This would integrate with user preference system
-    const configTone = this.config.tone === 'playful' ? 'friendly' : this.config.tone;
-    return {
-      tone: configTone,
-      language: this.config.multilingual.defaultLanguage,
-      verbosity: this.config.verbosity === 'concise' ? 'concise' :
-                this.config.verbosity === 'detailed' ? 'detailed' : 'normal',
+  private async executeToolCalls(
+    toolCalls: any[],
+    conversationContext: ConversationContext
+  ): Promise<ToolExecutionResult[]> {
+    this.logger.info('Executing tool calls', {
+      toolCount: toolCalls.length
+    });
+
+    const results: ToolExecutionResult[] = [];
+    for (const toolCall of toolCalls) {
+      const result = await this.toolExecutor.executeTool(toolCall, conversationContext);
+      results.push(result);
+    }
+
+    return results;
+  }
+
+  /**
+   * Create tool handler for Discord tools
+   */
+  private createToolHandler() {
+    // Import DiscordToolExecutor and create instance
+    const { DiscordToolExecutor } = require('../../tools/discord-tools');
+    const discordToolExecutor = new DiscordToolExecutor(this.logger);
+
+    // Return a bound function that executes tools through DiscordToolExecutor
+    return async (toolName: string, parameters: Record<string, any>, context: ExecutionContext) => {
+      return await discordToolExecutor.execute(toolName, parameters);
     };
+  }
+
+  /**
+   * Get current configuration
+   */
+  getConfig(): ConversationalDiscordConfig {
+    return { ...this.config };
+  }
+
+  /**
+   * Get conversation ID from a Discord message
+   */
+  private getConversationId(message: DiscordMessage): string {
+    return `${message.author.id}:${message.channelId}`;
+  }
+
+  /**
+   * Get user preferences (placeholder)
+   */
+  private getUserPreferences(userId: string): UserPreferences | undefined {
+    // This would integrate with user preference system
+    return undefined;
   }
 
   /**
@@ -503,87 +665,20 @@ export class DiscordConversationHandler {
       sentiment: {
         score: 0,
         magnitude: 0,
-        confidence: 0.5,
+        confidence: 0,
         approach: 'rule-based',
       },
       emotion: {
         primary: 'neutral',
         emotions: {},
-        confidence: 0.5,
+        confidence: 0,
       },
       mood: {
         mood: 'neutral',
         intensity: 0,
-        confidence: 0.5,
+        confidence: 0,
         factors: [],
       },
     };
-  }
-
-  /**
-   * Generate conversation ID from message
-   */
-  private getConversationId(message: DiscordMessage): string {
-    return this.generateConversationId(message.author.id, message.channelId);
-  }
-
-  /**
-   * Generate conversation ID from components
-   */
-  private generateConversationId(userId: string, channelId: string): string {
-    return `${userId}:${channelId}`;
-  }
-
-  /**
-   * Generate unique request ID
-   */
-  private generateRequestId(): string {
-    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  /**
-   * Get model for current provider
-   */
-  private getModelForProvider(): string {
-    const providers = this.aiProvider.getProviders();
-    const defaultProvider = Array.from(providers.values())[0];
-    const providerInfo = defaultProvider?.getProviderInfo();
-    return providerInfo?.id || 'gpt-4-turbo';
-  }
-
-  /**
-   * Get active conversation context
-   */
-  getConversationContext(conversationId: string): ConversationContext | undefined {
-    return this.activeConversations.get(conversationId);
-  }
-
-  /**
-   * Get all active conversations
-   */
-  getActiveConversations(): Map<string, ConversationContext> {
-    return new Map(this.activeConversations);
-  }
-
-  /**
-   * Check if conversation exists
-   */
-  hasConversation(conversationId: string): boolean {
-    return this.activeConversations.has(conversationId);
-  }
-
-  /**
-   * Update configuration
-   */
-  updateConfig(config: Partial<ConversationalDiscordConfig>): void {
-    this.config = { ...this.config, ...config };
-    this.logger.info('Configuration updated', { config });
-  }
-
-  /**
-   * Get current configuration
-   */
-  getConfig(): ConversationalDiscordConfig {
-    return { ...this.config };
   }
 }

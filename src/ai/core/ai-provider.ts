@@ -532,6 +532,13 @@ export class AnthropicProvider extends BaseAIProvider {
       requestBody.system = systemMessages;
     }
     
+    // DEBUG: Log tool schema being passed to Anthropic
+    this.logger.info('[DEBUG-TOOL-SCHEMA] Building Anthropic request:', {
+      hasTools: !!request.tools,
+      toolsCount: request.tools?.length || 0,
+      tools: request.tools ? JSON.stringify(this.convertToolsToAnthropicFormat(request.tools), null, 2) : 'none'
+    });
+    
     return requestBody;
   }
 
@@ -554,21 +561,43 @@ export class AnthropicProvider extends BaseAIProvider {
   }
 
   private convertToolsToAnthropicFormat(tools: any[]): any[] {
-    return tools.map(tool => ({
+    const convertedTools = tools.map(tool => ({
       name: tool.function.name,
       description: tool.function.description,
       input_schema: tool.function.parameters
     }));
+    
+    // DEBUG: Log the exact tool schema being converted
+    this.logger.info('[DEBUG-TOOL-SCHEMA] Converting tools to Anthropic format:', {
+      inputTools: JSON.stringify(tools, null, 2),
+      outputTools: JSON.stringify(convertedTools, null, 2)
+    });
+    
+    return convertedTools;
   }
 
   private parseAnthropicResponse(data: any, request: AIRequest): AIResponse {
-    const content = data.content[0];
+    let textContent = '';
+    const toolCalls: any[] = [];
+    
+    // Process all content blocks
+    for (const block of data.content) {
+      if (block.type === 'text') {
+        textContent += block.text;
+      } else if (block.type === 'tool_use') {
+        toolCalls.push({
+          id: block.id,
+          name: block.name,
+          arguments: block.input
+        });
+      }
+    }
     
     return {
       id: data.id,
       model: data.model,
       created: new Date(),
-      content: content.text || '',
+      content: textContent,
       role: 'assistant',
       finishReason: data.stop_reason,
       usage: {
@@ -576,14 +605,14 @@ export class AnthropicProvider extends BaseAIProvider {
         completionTokens: data.usage?.output_tokens || 0,
         totalTokens: (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0)
       },
-      toolCalls: content.tool_calls,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       metadata: {
         provider: 'anthropic',
         requestId: request.id,
         processingTime: Date.now() - request.timestamp.getTime(),
         type: 'text',
         format: 'markdown',
-        length: content.text?.length || 0,
+        length: textContent.length,
         tokens: (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0),
         tokensUsed: (data.usage?.input_tokens || 0) + (data.usage?.output_tokens || 0),
         modelUsed: data.model

@@ -161,6 +161,18 @@ Comprehensive safety measures at every level:
 - `sentimentAnalysis`: Analyze message sentiment
 - `memoryStore`: Store and retrieve conversation context
 
+### Tool Usage Guidelines
+
+1. **Always use tools when appropriate**: When users ask for information or actions that can be performed using available tools, you MUST call the appropriate tool function instead of providing a text response.
+
+2. **Tool-first approach**: Check available tools before providing information. If a tool can provide the requested information, use it.
+
+3. **Multi-tool calls**: You can call multiple tools in a single response if needed.
+
+4. **Tool results**: After receiving tool results, provide a clear, helpful response based on the tool output.
+
+5. **Tool parameters**: When calling tools, ensure all required parameters are provided. Optional parameters should only be included if the user has specified them or if they are necessary for the request.
+
 ## Configuration
 
 ### Discord Configuration

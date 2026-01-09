@@ -129,6 +129,7 @@ export class ConversationalAIProviderRouter {
           provider: providerId,
           model: response.model,
           tokensUsed: response.usage?.totalTokens || 0,
+          toolCalls: response.toolCalls,
         };
 
         this.logger.info(`[AI-ROUTER] Request completed successfully via ${providerId}`, {
@@ -387,6 +388,7 @@ export class ConversationalAIProviderRouter {
     if (request.tools && request.config.features.toolCalling) {
       aiRequest.tools = request.tools;
     }
+    this.logger.info('[DEBUG-TOOL] Adding tools to AI request:', { hasTools: !!aiRequest.tools });
 
     return aiRequest;
   }

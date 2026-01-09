@@ -133,6 +133,7 @@ export interface ConversationalAIResponse {
   provider: string;
   model: string;
   tokensUsed: number;
+  toolCalls?: any[];
 }
 
 // ============================================================================

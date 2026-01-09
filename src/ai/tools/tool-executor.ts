@@ -10,6 +10,7 @@ import { ToolRegistry, ToolExecutorConfig, ToolExecutionResult } from './tool-re
 import { ToolSandbox } from './tool-sandbox';
 import { Logger, LogLevel } from '../../utils/logger';
 import { BotError, AIError } from '../../utils/errors';
+import { AISDKAdapter, AIAdapterConfig } from '../sdk/ai-sdk-adapter';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -71,7 +72,7 @@ export interface ResourceMonitor {
 }
 
 export interface ResourceUsage {
-  memoryMB: number;
+  memoryUsageMB: number;
   cpuUsage: number;
   networkRequests: number;
   executionTime: number;
@@ -91,6 +92,9 @@ export class ToolExecutor {
   private resourceMonitor: ResourceMonitor;
   private executionQueue: Map<string, Promise<any>[]> = new Map();
   private retryCount: Map<string, number> = new Map();
+  
+  // AI SDK integration
+  private aiSDKAdapter: AISDKAdapter;
 
   constructor(
     registry: ToolRegistry,
@@ -103,6 +107,9 @@ export class ToolExecutor {
     this.config = config;
     this.logger = logger;
     this.resourceMonitor = new DefaultResourceMonitor(logger);
+    
+    // Get AI SDK adapter from registry
+    this.aiSDKAdapter = registry.getAISDKAdapter();
   }
 
   /**
@@ -144,8 +151,22 @@ export class ToolExecutor {
       // Check rate limits
       await this.registry.checkRateLimit(toolCall.name);
 
-      // Validate parameters
-      const validation = this.validateParameters(toolCall.arguments, tool.parameters);
+      // Validate parameters using AI SDK if enabled, otherwise use legacy validation
+      let validation: ValidationResult;
+      if (this.registry.shouldUseAISDKForExecution()) {
+        const aiSDKValidation = this.registry.validateToolParametersWithAISDK(
+          toolCall.name,
+          toolCall.arguments
+        );
+        validation = {
+          valid: aiSDKValidation.valid,
+          errors: aiSDKValidation.errors,
+          warnings: []
+        };
+      } else {
+        validation = this.validateParameters(toolCall.arguments, tool.parameters);
+      }
+      
       if (!validation.valid) {
         throw new AIError(
           `Parameter validation failed: ${validation.errors.join(', ')}`,
@@ -400,14 +421,14 @@ export class ToolExecutor {
    * Validate tool parameters
    */
   private validateParameters(
-    arguments: Record<string, any>,
+    args: Record<string, any>,
     parameters: any[]
   ): ValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
     for (const param of parameters) {
-      const value = arguments[param.name];
+      const value = args[param.name];
       const hasValue = value !== undefined && value !== null;
 
       // Check required parameters
@@ -516,7 +537,6 @@ export class ToolExecutor {
 
     if (validation.enum && !validation.enum.includes(value)) {
       return `Parameter '${param.name}' must be one of: ${validation.enum.join(', ')}`;
-    }
     }
 
     return null;
