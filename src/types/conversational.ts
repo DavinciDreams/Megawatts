@@ -39,7 +39,7 @@ export interface ConversationContext {
 }
 
 export interface MessageHistoryEntry {
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
   timestamp: Date;
   metadata?: Record<string, unknown>;
