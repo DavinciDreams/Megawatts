@@ -387,8 +387,13 @@ export class ConversationalAIProviderRouter {
     // Include tools if provided and tool calling is enabled
     if (request.tools && request.config.features.toolCalling) {
       aiRequest.tools = request.tools;
+      aiRequest.tool_choice = 'auto'; // Enable AI to decide when to call tools
+      this.logger.info('[DEBUG-TOOL] Setting tool_choice to auto for AI request');
     }
-    this.logger.info('[DEBUG-TOOL] Adding tools to AI request:', { hasTools: !!aiRequest.tools });
+    this.logger.info('[DEBUG-TOOL] Adding tools to AI request:', {
+      hasTools: !!aiRequest.tools,
+      toolChoice: aiRequest.tool_choice
+    });
 
     return aiRequest;
   }

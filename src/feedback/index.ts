@@ -101,14 +101,16 @@ export const FEEDBACK_MODULE_INFO = {
 
 /**
  * Initialize feedback system
- * 
- * @param repository - Feedback repository instance
+ *
+ * @param feedbackRepository - Feedback repository instance
+ * @param abTestRepository - A/B test repository instance
  * @param aiProvider - AI provider for analysis
  * @param configs - Optional configuration objects
  * @returns Initialized feedback system components
  */
 export function initializeFeedbackSystem(
-  repository: FeedbackRepository,
+  feedbackRepository: FeedbackRepository,
+  abTestRepository: ABTestRepository,
   aiProvider: any,
   configs?: {
     collector?: Partial<FeedbackCollectorConfig>;
@@ -117,10 +119,10 @@ export function initializeFeedbackSystem(
     abTesting?: Partial<ABTestingConfig>;
   }
 ) {
-  const collector = new FeedbackCollector(repository, configs?.collector);
-  const analyzer = new FeedbackAnalyzer(repository, aiProvider, configs?.analyzer);
-  const prioritizer = new FeedbackPrioritizer(repository, configs?.prioritizer);
-  const abTesting = new ABTestingFramework(repository, configs?.abTesting);
+  const collector = new FeedbackCollector(feedbackRepository, configs?.collector);
+  const analyzer = new FeedbackAnalyzer(feedbackRepository, aiProvider, configs?.analyzer);
+  const prioritizer = new FeedbackPrioritizer(feedbackRepository, configs?.prioritizer);
+  const abTesting = new ABTestingFramework(abTestRepository, configs?.abTesting);
 
   return {
     collector,

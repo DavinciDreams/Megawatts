@@ -973,28 +973,28 @@ If you need more information or this doesn't fully address your issue, please le
       {
         id: 'template_welcome',
         name: 'Welcome',
-        category: 'general',
+        category: SupportCategory.GENERAL,
         content: 'Welcome to our community! We\'re glad to have you here. If you have any questions or need assistance, feel free to create a support ticket.',
         isActive: true
       },
       {
         id: 'template_bot_commands',
         name: 'Bot Commands',
-        category: 'technical',
+        category: SupportCategory.TECHNICAL,
         content: 'Here are the available bot commands:\n- `/help` - Show all commands\n- `/config` - Configure bot settings\n- `/support` - Create a support ticket\n\nFor more details, check our documentation.',
         isActive: true
       },
       {
         id: 'template_account_issues',
         name: 'Account Issues',
-        category: 'account',
+        category: SupportCategory.ACCOUNT,
         content: 'I understand you\'re having account issues. Please verify:\n1. You\'re using the correct Discord account\n2. Your permissions are properly configured\n3. You\'ve tried logging out and back in\n\nIf the issue persists, please provide more details about what\'s happening.',
         isActive: true
       },
       {
         id: 'template_feature_request',
         name: 'Feature Request',
-        category: 'feature_request',
+        category: SupportCategory.FEATURE_REQUEST,
         content: 'Thank you for your feature request! We\'ve logged it and our team will review it. We appreciate your feedback and suggestions for improving the community.',
         isActive: true
       }

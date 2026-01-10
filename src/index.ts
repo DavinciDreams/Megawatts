@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
+import * as path from 'path';
 import { HealthManager } from './core/health/index';
 import { Logger as UtilsLogger } from './utils/logger';
 import { MessageRouter } from './core/processing/messageRouter';
@@ -11,7 +12,7 @@ import { RedisConnectionManager } from './storage/database/redis';
 import { DistributedLock } from './utils/distributed-lock';
 import { ConversationalDiscordConfig } from './types/conversational';
 import { conversationalConfigManager } from './config/conversationalConfigManager';
-import { aiSDKConfigManager, type AIAdapterConfig } from './config/ai-sdk-config';
+import { aiSDKConfigManager } from './config/ai-sdk-config';
 import {
   createDiscordBotIntegration,
   DiscordBotIntegration,
@@ -402,6 +403,9 @@ class SelfEditingDiscordBot {
       this.logger.info('TieredStorageManager initialized');
       
       // Initialize ToolRegistry for tool calling support
+      const toolsPath = path.join(process.cwd(), 'src/tools');
+      console.log('[DEBUG-TOOLS] Tool discovery path (absolute):', toolsPath);
+      
       const toolRegistryConfig: ToolRegistryConfig = {
         autoRegisterBuiltinTools: true,
         enablePermissions: true,
@@ -412,14 +416,21 @@ class SelfEditingDiscordBot {
         enableDependencyManagement: true,
         maxTools: 100,
         toolDiscoveryPaths: [
-          './src/tools',
+          toolsPath,
         ],
         enableRateLimiting: true,
       };
       const toolRegistry = new ToolRegistry(toolRegistryConfig, this.logger);
       
       // Discover tools from configured paths
-      await toolRegistry.discoverTools();
+      console.log('[DEBUG-TOOLS] Starting tool discovery...');
+      const discoveryResult = await toolRegistry.discoverTools();
+      console.log('[DEBUG-TOOLS] Tool discovery completed:', {
+        discovered: discoveryResult.discovered,
+        registered: discoveryResult.registered,
+        failed: discoveryResult.failed,
+        errors: discoveryResult.errors
+      });
       this.logger.info('ToolRegistry initialized and tools discovered');
       
       this.discordBotIntegration = await createDiscordBotIntegration({

@@ -8,7 +8,7 @@
 
 import { Logger } from '../utils/logger.js';
 import { LearningRepository } from './learning-repository.js';
-import { Pattern } from './learning-models.js';
+import { Pattern, PatternType } from './learning-models.js';
 import { LearningConstraints } from './learning-models.js';
 import { BehaviorAdaptationResult } from './learning-models.js';
 import { Behavior, BehaviorType } from './learning-models.js';

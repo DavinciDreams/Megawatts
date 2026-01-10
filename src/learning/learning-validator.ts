@@ -282,8 +282,7 @@ export class LearningValidator {
           safety_checks_passed: safetyChecks.filter(c => c.passed).length,
           safety_checks_total: safetyChecks.length,
           confidence_score: knowledge.confidence,
-          usage_count: knowledge.usage_count,
-          privacy_level: knowledge.privacy_level
+          usage_count: knowledge.usage_count
         },
         safety_checks: safetyChecks,
         validated_at: new Date()

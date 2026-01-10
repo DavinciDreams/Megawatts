@@ -810,7 +810,7 @@ export class ComplianceManager extends EventEmitter {
       .filter(a => a.type === ComplianceType.GDPR)
       .map(a => ({
         passed: a.passed,
-        score: a.overallScore,
+        score: a.score,
         findings: a.findings,
         dataRetentionCompliant: true,
         consentManagementCompliant: true,
@@ -822,7 +822,7 @@ export class ComplianceManager extends EventEmitter {
       .filter(a => a.type === ComplianceType.DISCORD_TOS)
       .map(a => ({
         passed: a.passed,
-        score: a.overallScore,
+        score: a.score,
         findings: a.findings,
         apiUsageCompliant: true,
         rateLimitCompliant: true,
@@ -835,9 +835,9 @@ export class ComplianceManager extends EventEmitter {
       .filter(a => a.type === ComplianceType.ACCESSIBILITY)
       .map(a => ({
         passed: a.passed,
-        score: a.overallScore,
+        score: a.score,
         findings: a.findings,
-        wcagLevel: 'AA',
+        wcagLevel: this.config.accessibilitySettings.wcagLevel,
         colorContrastCompliant: true,
         altTextCompliant: true,
         keyboardNavigationCompliant: true,
@@ -848,7 +848,7 @@ export class ComplianceManager extends EventEmitter {
       .filter(a => a.type === ComplianceType.LOCALIZATION)
       .map(a => ({
         passed: a.passed,
-        score: a.overallScore,
+        score: a.score,
         findings: a.findings,
         allLanguagesTranslated: true,
         noUntranslatedStrings: true,

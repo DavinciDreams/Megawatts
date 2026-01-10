@@ -523,9 +523,37 @@ export class AnthropicProvider extends BaseAIProvider {
       temperature: request.temperature,
       top_p: request.topP,
       ...(request.tools && { tools: this.convertToolsToAnthropicFormat(request.tools) }),
-      ...(request.tool_choice && { tool_choice: request.tool_choice }),
       stream: false
     };
+    
+    // Handle tool_choice format - Anthropic requires object format, not string
+    if (request.tool_choice) {
+      if (typeof request.tool_choice === 'string') {
+        // Anthropic expects {type: "auto"} instead of "auto"
+        const toolChoiceMap: Record<string, string> = {
+          'auto': 'auto',
+          'required': 'any',
+          'none': 'none'
+        };
+        
+        const anthropicType = toolChoiceMap[request.tool_choice] || 'auto';
+        requestBody.tool_choice = { type: anthropicType };
+        
+        this.logger.debug('[TOOL_CHOICE] Converted tool_choice for Anthropic model', {
+          model: request.model,
+          original: request.tool_choice,
+          converted: requestBody.tool_choice
+        });
+      } else {
+        // Already in object format, use as-is
+        requestBody.tool_choice = request.tool_choice;
+        
+        this.logger.debug('[TOOL_CHOICE] Using object format for Anthropic', {
+          model: request.model,
+          tool_choice: requestBody.tool_choice
+        });
+      }
+    }
     
     // Add system parameter if there are system messages
     if (systemMessages) {

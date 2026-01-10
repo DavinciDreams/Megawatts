@@ -95,21 +95,34 @@ export class ToolExecutor {
   
   // AI SDK integration
   private aiSDKAdapter: AISDKAdapter;
+  
+  // Discord tool executor for Discord-specific tools
+  private discordToolExecutor: any = null;
 
   constructor(
     registry: ToolRegistry,
     sandbox: ToolSandbox,
     config: ToolExecutorConfig,
-    logger: Logger
+    logger: Logger,
+    discordToolExecutor?: any
   ) {
     this.registry = registry;
     this.sandbox = sandbox;
     this.config = config;
     this.logger = logger;
     this.resourceMonitor = new DefaultResourceMonitor(logger);
+    this.discordToolExecutor = discordToolExecutor || null;
     
     // Get AI SDK adapter from registry
     this.aiSDKAdapter = registry.getAISDKAdapter();
+  }
+
+  /**
+   * Set Discord tool executor
+   */
+  setDiscordToolExecutor(executor: any): void {
+    this.discordToolExecutor = executor;
+    this.logger.info('Discord tool executor set', { hasExecutor: !!executor });
   }
 
   /**
@@ -140,7 +153,15 @@ export class ToolExecutor {
       }
 
       // Check permissions
-      if (!this.registry.hasPermission(toolCall.name, context.permissions)) {
+      const hasPermission = this.registry.hasPermission(toolCall.name, context.permissions);
+      this.logger.debug('[DEBUG-TOOLS] Permission check result', {
+        toolName: toolCall.name,
+        requiredPermissions: tool.permissions,
+        userPermissions: context.permissions,
+        hasPermission
+      });
+
+      if (!hasPermission) {
         throw new BotError(
           `Insufficient permissions for tool '${toolCall.name}'`,
           'medium',
@@ -154,6 +175,9 @@ export class ToolExecutor {
       // Validate parameters using AI SDK if enabled, otherwise use legacy validation
       let validation: ValidationResult;
       if (this.registry.shouldUseAISDKForExecution()) {
+        this.logger.debug('[DEBUG-TOOLS] Using AI SDK for parameter validation', {
+          toolName: toolCall.name
+        });
         const aiSDKValidation = this.registry.validateToolParametersWithAISDK(
           toolCall.name,
           toolCall.arguments
@@ -164,9 +188,19 @@ export class ToolExecutor {
           warnings: []
         };
       } else {
+        this.logger.debug('[DEBUG-TOOLS] Using legacy parameter validation', {
+          toolName: toolCall.name
+        });
         validation = this.validateParameters(toolCall.arguments, tool.parameters);
       }
-      
+
+      this.logger.debug('[DEBUG-TOOLS] Parameter validation result', {
+        toolName: toolCall.name,
+        valid: validation.valid,
+        errors: validation.errors,
+        warnings: validation.warnings
+      });
+
       if (!validation.valid) {
         throw new AIError(
           `Parameter validation failed: ${validation.errors.join(', ')}`,
@@ -402,19 +436,64 @@ export class ToolExecutor {
     // Track active execution
     this.activeExecutions.set(toolCall.id, Promise.resolve());
 
-    // This would be implemented by actual tool handlers
-    // For now, return a placeholder result
-    return {
-      tool: tool.name,
-      arguments: toolCall.arguments,
-      executed: true,
-      timestamp: new Date(),
-      context: {
-        userId: context.userId,
-        guildId: context.guildId,
-        channelId: context.channelId
+    // Log tool execution start
+    this.logger.info('Starting direct tool execution', {
+      toolName: tool.name,
+      toolCategory: tool.category,
+      toolCallId: toolCall.id,
+      userId: context.userId,
+      guildId: context.guildId,
+      channelId: context.channelId,
+      arguments: toolCall.arguments
+    });
+
+    try {
+      // Route to appropriate executor based on tool category
+      if (tool.category === 'discord') {
+        if (!this.discordToolExecutor) {
+          throw new BotError(
+            'Discord tool executor not initialized. Please set the Discord tool executor.',
+            'high',
+            { toolName: tool.name }
+          );
+        }
+
+        this.logger.debug('Routing to Discord tool executor', {
+          toolName: tool.name
+        });
+
+        // Execute using Discord tool executor
+        const result = await this.discordToolExecutor.execute(
+          tool.name,
+          toolCall.arguments
+        );
+
+        // Log successful execution
+        this.logger.info('Tool execution completed successfully', {
+          toolName: tool.name,
+          toolCallId: toolCall.id,
+          success: true
+        });
+
+        return result;
       }
-    };
+
+      // Handle other tool categories
+      // For now, throw an error for unsupported categories
+      throw new BotError(
+        `Tool category '${tool.category}' is not supported for direct execution`,
+        'medium',
+        { toolName: tool.name, category: tool.category }
+      );
+    } catch (error) {
+      // Log execution error
+      this.logger.error('Tool execution failed', error as Error, {
+        toolName: tool.name,
+        toolCallId: toolCall.id,
+        arguments: toolCall.arguments
+      });
+      throw error;
+    }
   }
 
   /**

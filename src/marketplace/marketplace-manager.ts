@@ -22,7 +22,8 @@ import {
   PluginVersion,
   PluginDependency,
   PluginConfigSchema,
-  ConfigProperty
+  ConfigProperty,
+  PluginReview
 } from './marketplace-models';
 
 /**
@@ -91,6 +92,7 @@ export interface PluginApprovalResult {
   reviewerId?: string;
   notes?: string;
   conditions?: string[];
+  errors?: string[];
 }
 
 /**
@@ -101,6 +103,7 @@ export interface PluginVersionResult {
   pluginId: string;
   versionId?: string;
   version?: PluginVersion;
+  errors?: string[];
 }
 
 /**
@@ -394,15 +397,19 @@ export class MarketplaceManager {
       if (!plugin) {
         return {
           success: false,
+          pluginId,
+          approved: false,
           errors: [`Plugin not found: ${pluginId}`]
         };
       }
 
       // Check if plugin is in appropriate status
-      if (plugin.status !== PluginStatus.PENDING_REVIEW && 
+      if (plugin.status !== PluginStatus.PENDING_REVIEW &&
           plugin.status !== PluginStatus.UNDER_REVIEW) {
         return {
           success: false,
+          pluginId,
+          approved: false,
           errors: [`Plugin is not in review status: ${plugin.status}`]
         };
       }
@@ -428,6 +435,8 @@ export class MarketplaceManager {
       this.logger.error('Plugin approval failed:', error instanceof Error ? error : new Error(String(error)));
       return {
         success: false,
+        pluginId,
+        approved: false,
         errors: [error instanceof Error ? error.message : String(error)]
       };
     }
@@ -449,15 +458,19 @@ export class MarketplaceManager {
       if (!plugin) {
         return {
           success: false,
+          pluginId,
+          approved: false,
           errors: [`Plugin not found: ${pluginId}`]
         };
       }
 
       // Check if plugin is in appropriate status
-      if (plugin.status !== PluginStatus.PENDING_REVIEW && 
+      if (plugin.status !== PluginStatus.PENDING_REVIEW &&
           plugin.status !== PluginStatus.UNDER_REVIEW) {
         return {
           success: false,
+          pluginId,
+          approved: false,
           errors: [`Plugin is not in review status: ${plugin.status}`]
         };
       }
@@ -480,6 +493,8 @@ export class MarketplaceManager {
       this.logger.error('Plugin rejection failed:', error instanceof Error ? error : new Error(String(error)));
       return {
         success: false,
+        pluginId,
+        approved: false,
         errors: [error instanceof Error ? error.message : String(error)]
       };
     }
@@ -491,7 +506,7 @@ export class MarketplaceManager {
   async updatePlugin(
     pluginId: string,
     updates: PluginUpdate
-  ): Promise<{ success: boolean; plugin?: MarketplacePlugin }> {
+  ): Promise<{ success: boolean; plugin?: MarketplacePlugin; errors?: string[] }> {
     try {
       this.logger.info(`Updating plugin: ${pluginId}`);
 
@@ -546,12 +561,14 @@ export class MarketplaceManager {
       if (versions.length >= this.config.maxVersionsPerPlugin) {
         return {
           success: false,
+          pluginId,
           errors: [`Maximum number of versions (${this.config.maxVersionsPerPlugin}) exceeded`]
         };
       }
 
       // Create version
       const newVersion: PluginVersion = {
+        id: crypto.randomUUID(),
         pluginId,
         version,
         changelog,
@@ -577,6 +594,7 @@ export class MarketplaceManager {
       this.logger.error('Plugin version creation failed:', error instanceof Error ? error : new Error(String(error)));
       return {
         success: false,
+        pluginId,
         errors: [error instanceof Error ? error.message : String(error)]
       };
     }
@@ -588,7 +606,7 @@ export class MarketplaceManager {
   async deletePlugin(
     pluginId: string,
     deleteVolumes: boolean = false
-  ): Promise<{ success: boolean; deletedVersions?: number }> {
+  ): Promise<{ success: boolean; deletedVersions?: number; errors?: string[] }> {
     try {
       this.logger.info(`Deleting plugin: ${pluginId}`);
 

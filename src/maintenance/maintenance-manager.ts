@@ -496,7 +496,20 @@ export class MaintenanceManager extends EventEmitter {
     const severity = finding.severity as SecuritySeverity;
 
     // Get response time from rules
-    const responseTime = this.config.securityResponseRules[`${severity}ResponseTime` as keyof SecurityResponseRules] || 60;
+    let responseTime = 60;
+    switch (severity) {
+      case SecuritySeverity.CRITICAL:
+        responseTime = this.config.securityResponseRules.criticalResponseTime;
+        break;
+      case SecuritySeverity.HIGH:
+        responseTime = this.config.securityResponseRules.highResponseTime;
+        break;
+      case SecuritySeverity.MEDIUM:
+        responseTime = this.config.securityResponseRules.mediumResponseTime;
+        break;
+      default:
+        responseTime = 60;
+    }
 
     // Create or update security incident response
     const response: SecurityIncidentResponse = {

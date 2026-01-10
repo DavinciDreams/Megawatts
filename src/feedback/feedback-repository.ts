@@ -808,7 +808,8 @@ export class ABTestRepository {
           conversionRateCI: [0, 0], // TODO: Calculate proper confidence interval
           averageRating: variant.metrics.averageRating,
           customMetrics: variant.metrics.customMetrics,
-        };
+          uplift: undefined, // Will be calculated later
+        } as any;
       });
 
       // Find control variant

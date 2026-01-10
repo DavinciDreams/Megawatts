@@ -29,11 +29,8 @@ import {
  * Handles all database operations for maintenance-related entities
  */
 export class MaintenanceRepository extends BaseRepository<any> {
-  private logger: Logger;
-
   constructor(db: PostgresConnectionManager) {
     super(db, 'maintenance_tasks', 'id');
-    this.logger = new Logger('MaintenanceRepository');
   }
 
   // ============================================================================

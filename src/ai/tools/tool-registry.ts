@@ -374,11 +374,21 @@ export class ToolRegistry {
    */
   registerTool(tool: Tool): void {
     try {
+      this.logger.debug('[DEBUG-TOOLS] Starting tool registration', {
+        toolName: tool.name,
+        category: tool.category,
+        safety: tool.safety.level
+      });
+
       // Validate tool structure
       this.validateTool(tool);
 
       // Check if tool already exists
       if (this.tools.has(tool.name)) {
+        this.logger.warn('[DEBUG-TOOLS] Tool already registered', {
+          toolName: tool.name,
+          existingTool: this.tools.get(tool.name)?.metadata.version
+        });
         throw new BotError(
           `Tool '${tool.name}' is already registered`,
           'medium',
@@ -402,15 +412,32 @@ export class ToolRegistry {
 
       // Register tool
       this.tools.set(tool.name, tool);
+      this.logger.debug('[DEBUG-TOOLS] Tool added to registry', {
+        toolName: tool.name,
+        totalTools: this.tools.size,
+        maxTools: this.config.maxTools
+      });
 
       // Add to category
       if (!this.categories.has(tool.category)) {
         this.categories.set(tool.category, new Set());
+        this.logger.debug('[DEBUG-TOOLS] Created new category', {
+          category: tool.category
+        });
       }
       this.categories.get(tool.category)!.add(tool.name);
+      this.logger.debug('[DEBUG-TOOLS] Tool added to category', {
+        toolName: tool.name,
+        category: tool.category,
+        toolsInCategory: this.categories.get(tool.category)!.size
+      });
 
       // Store permissions
       this.permissions.set(tool.name, tool.permissions);
+      this.logger.debug('[DEBUG-TOOLS] Tool permissions stored', {
+        toolName: tool.name,
+        permissions: tool.permissions
+      });
 
       // Build dependency graph
       this.addToDependencyGraph(tool);
@@ -525,18 +552,38 @@ export class ToolRegistry {
       if (cached && !this.isCacheEntryExpired(cached)) {
         cached.accessCount++;
         cached.lastAccessed = new Date();
+        this.logger.debug('[DEBUG-TOOLS] Tool retrieved from cache', {
+          toolName,
+          accessCount: cached.accessCount,
+          cachedAt: cached.cachedAt
+        });
         return cached.tool;
       }
     }
 
-    return this.tools.get(toolName);
+    const tool = this.tools.get(toolName);
+    if (tool) {
+      this.logger.debug('[DEBUG-TOOLS] Tool retrieved from registry', {
+        toolName,
+        category: tool.category,
+        safety: tool.safety.level
+      });
+    } else {
+      this.logger.debug('[DEBUG-TOOLS] Tool not found in registry', { toolName });
+    }
+    return tool;
   }
 
   /**
    * Get all registered tools
    */
   getAllTools(): Tool[] {
-    return Array.from(this.tools.values());
+    const tools = Array.from(this.tools.values());
+    this.logger.debug('[DEBUG-TOOLS] Retrieved all tools', {
+      totalTools: tools.length,
+      toolNames: tools.map(t => t.name)
+    });
+    return tools;
   }
 
   /**
@@ -545,12 +592,21 @@ export class ToolRegistry {
   getToolsByCategory(category: ToolCategory): Tool[] {
     const toolNames = this.categories.get(category);
     if (!toolNames) {
+      this.logger.debug('[DEBUG-TOOLS] No tools found for category', { category });
       return [];
     }
 
-    return Array.from(toolNames)
+    const tools = Array.from(toolNames)
       .map(name => this.tools.get(name))
       .filter(tool => tool !== undefined) as Tool[];
+
+    this.logger.debug('[DEBUG-TOOLS] Retrieved tools by category', {
+      category,
+      count: tools.length,
+      toolNames: tools.map(t => t.name)
+    });
+
+    return tools;
   }
 
   /**
@@ -566,9 +622,14 @@ export class ToolRegistry {
    * Get safe tools (no dangerous permissions required)
    */
   getSafeTools(): Tool[] {
-    return Array.from(this.tools.values()).filter(tool =>
+    const tools = Array.from(this.tools.values()).filter(tool =>
       tool.safety.level === 'safe'
     );
+    this.logger.debug('[DEBUG-TOOLS] Retrieved safe tools', {
+      count: tools.length,
+      toolNames: tools.map(t => t.name)
+    });
+    return tools;
   }
 
   /**
@@ -602,16 +663,31 @@ export class ToolRegistry {
    */
   hasPermission(toolName: string, userPermissions: string[]): boolean {
     if (!this.config.enablePermissions) {
+      this.logger.debug('[DEBUG-TOOLS] Permission check bypassed (permissions disabled)', {
+        toolName,
+        enablePermissions: this.config.enablePermissions
+      });
       return true;
     }
 
     const toolPerms = this.permissions.get(toolName);
     if (!toolPerms) {
+      this.logger.warn('[DEBUG-TOOLS] Tool permissions not found', { toolName });
       return false;
     }
 
     // Check if user has any of the required permissions
-    return toolPerms.some(perm => userPermissions.includes(perm));
+    const hasPermission = toolPerms.some(perm => userPermissions.includes(perm));
+
+    this.logger.debug('[DEBUG-TOOLS] Permission check result', {
+      toolName,
+      requiredPermissions: toolPerms,
+      userPermissions,
+      hasPermission,
+      enablePermissions: this.config.enablePermissions
+    });
+
+    return hasPermission;
   }
 
   /**

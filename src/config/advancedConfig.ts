@@ -43,7 +43,7 @@ export interface RedisConfig {
 export interface AIConfig {
   provider: 'openai' | 'anthropic' | 'local' | 'custom';
   openai?: {
-    apiKey: string;
+    apiKey?: string;
     organizationId?: string;
     model: string;
     maxTokens: number;
@@ -254,7 +254,7 @@ export interface MonitoringConfig {
   };
   alerts: {
     enabled: boolean;
-    channels: 'email' | 'slack' | 'webhook' | 'discord';
+    channels: 'email' | 'slack' | 'webhook' | 'discord' | 'console';
     thresholds: {
       errorRate: number;
       responseTime: number;
@@ -785,7 +785,7 @@ export class AdvancedConfigManager {
         },
         alerts: {
           enabled: true,
-          channels: ['console'],
+          channels: 'console',
           thresholds: {
             errorRate: 0.05, // 5%
             responseTime: 5000, // 5 seconds
@@ -826,12 +826,12 @@ export class AdvancedConfigManager {
     for (const key in overrides) {
       if (overrides[key as keyof AdvancedBotConfig] !== undefined) {
         if (typeof defaults[key as keyof AdvancedBotConfig] === 'object' && typeof overrides[key as keyof AdvancedBotConfig] === 'object') {
-          merged[key as keyof AdvancedBotConfig] = this.mergeConfig(
+          (merged as any)[key] = this.mergeConfig(
             defaults[key as keyof AdvancedBotConfig] as any,
             overrides[key as keyof AdvancedBotConfig] as any
           );
         } else {
-          merged[key as keyof AdvancedBotConfig] = overrides[key as keyof AdvancedBotConfig];
+          (merged as any)[key] = overrides[key as keyof AdvancedBotConfig];
         }
       }
     }

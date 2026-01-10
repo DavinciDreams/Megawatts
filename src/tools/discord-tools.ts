@@ -1905,6 +1905,13 @@ export class DiscordToolExecutor {
   }
 
   /**
+   * Get Discord client
+   */
+  getClient(): Client | null {
+    return this.client;
+  }
+
+  /**
    * Ensure client is available
    */
   private ensureClient(): Client {

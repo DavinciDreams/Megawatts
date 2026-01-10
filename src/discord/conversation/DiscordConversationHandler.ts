@@ -27,11 +27,12 @@ import { DiscordContextManager } from '../context/DiscordContextManager';
 import { EmotionalIntelligenceEngine } from '../emotional/EmotionalIntelligenceEngine';
 import { EmergencyStopHandler } from '../emotional/EmergencyStopHandler';
 import { Logger } from '../../utils/logger';
-import { ToolRegistry } from '../../ai/tools/tool-registry';
+import { ToolRegistry, ToolExecutionResult } from '../../ai/tools/tool-registry';
 import { Tool } from '../../types/ai';
-import { ToolExecutor, ExecutionContext, ToolExecutionResult, ToolHandlerFunction } from '../../ai/tools/tool-executor';
+import { ToolExecutor, ExecutionContext } from '../../ai/tools/tool-executor';
 import { ToolSandbox, SandboxConfig } from '../../ai/tools/tool-sandbox';
 import { DiscordToolExecutor } from '../../tools/discord-tools';
+import { PermissionFlagsBits } from 'discord.js';
 
 // ============================================================================
 // DISCORD CONVERSATION HANDLER CLASS
@@ -49,6 +50,7 @@ export class DiscordConversationHandler {
   private toolSandbox: ToolSandbox;
   private logger: Logger;
   private activeConversations: Map<string, ConversationContext> = new Map();
+  private discordToolExecutor: DiscordToolExecutor;
 
   constructor(
     config: ConversationalDiscordConfig,
@@ -79,6 +81,7 @@ export class DiscordConversationHandler {
       enableFileSystemIsolation: false,
       enableApiRestrictions: false,
       allowedDomains: [],
+      allowedPaths: [],
       blockedPaths: [],
       allowedApis: [],
       blockedApis: []
@@ -87,7 +90,7 @@ export class DiscordConversationHandler {
     this.toolSandbox = new ToolSandbox(sandboxConfig, this.logger);
     
     // Create Discord tool executor
-    const discordToolExecutor = new DiscordToolExecutor(this.logger);
+    this.discordToolExecutor = new DiscordToolExecutor(this.logger);
     
     this.toolExecutor = new ToolExecutor(
       this.toolRegistry,
@@ -102,7 +105,7 @@ export class DiscordConversationHandler {
         retryDelay: 1000
       },
       this.logger,
-      this.createToolHandler.bind(this)
+      this.discordToolExecutor  // Pass Discord tool executor to enable tool execution
     );
 
     this.logger.info('DiscordConversationHandler initialized', {
@@ -114,6 +117,143 @@ export class DiscordConversationHandler {
       emotionalIntelligenceEnabled: config.emotionalIntelligence.enabled,
       emergencyStopEnabled: config.safety.emergencyStop,
     });
+  }
+
+  /**
+   * Set Discord client on the tool executor
+   * This allows the handler to access Discord client for permission checks
+   */
+  setDiscordClient(client: any): void {
+    this.discordToolExecutor.setClient(client);
+    this.logger.info('Discord client set on tool executor');
+  }
+
+  /**
+   * Convert Discord PermissionFlagsBits to permission strings
+   * This converts the bot's permission bits to the string format expected by tools
+   */
+  private convertPermissionBitsToStrings(permissionBits: bigint): string[] {
+    const permissions: string[] = [];
+    
+    // Map Discord.js PermissionFlagsBits to string names
+    // Only include permissions that are actually used by tools
+    // Keys are in snake_case to match tool permission definitions
+    const permissionMap: Record<string, bigint> = {
+      'create_instant_invite': PermissionFlagsBits.CreateInstantInvite,
+      'kick_members': PermissionFlagsBits.KickMembers,
+      'ban_members': PermissionFlagsBits.BanMembers,
+      'administrator': PermissionFlagsBits.Administrator,
+      'manage_channels': PermissionFlagsBits.ManageChannels,
+      'manage_guild': PermissionFlagsBits.ManageGuild,
+      'add_reactions': PermissionFlagsBits.AddReactions,
+      'view_audit_log': PermissionFlagsBits.ViewAuditLog,
+      'priority_speaker': PermissionFlagsBits.PrioritySpeaker,
+      'stream': PermissionFlagsBits.Stream,
+      'read_messages': PermissionFlagsBits.ReadMessageHistory,
+      'send_messages': PermissionFlagsBits.SendMessages,
+      'send_tts_messages': PermissionFlagsBits.SendTTSMessages,
+      'manage_messages': PermissionFlagsBits.ManageMessages,
+      'embed_links': PermissionFlagsBits.EmbedLinks,
+      'attach_files': PermissionFlagsBits.AttachFiles,
+      'read_message_history': PermissionFlagsBits.ReadMessageHistory,
+      'mention_everyone': PermissionFlagsBits.MentionEveryone,
+      'external_emojis': PermissionFlagsBits.UseExternalEmojis,
+      'view_guild_insights': PermissionFlagsBits.ViewGuildInsights,
+      'moderate_members': PermissionFlagsBits.ModerateMembers,
+      'view_creator_monetization_analytics': PermissionFlagsBits.ViewCreatorMonetizationAnalytics,
+      'use_soundboard': PermissionFlagsBits.UseSoundboard,
+      'use_external_sounds': PermissionFlagsBits.UseExternalSounds,
+      'use_vad': PermissionFlagsBits.UseVAD,
+      'request_to_speak': PermissionFlagsBits.RequestToSpeak,
+      'manage_nicknames': PermissionFlagsBits.ManageNicknames,
+      'manage_roles': PermissionFlagsBits.ManageRoles,
+      'manage_webhooks': PermissionFlagsBits.ManageWebhooks,
+      'manage_guild_expressions': PermissionFlagsBits.ManageGuildExpressions,
+      'use_application_commands': PermissionFlagsBits.UseApplicationCommands,
+      'manage_threads': PermissionFlagsBits.ManageThreads,
+      'create_public_threads': PermissionFlagsBits.CreatePublicThreads,
+      'create_private_threads': PermissionFlagsBits.CreatePrivateThreads,
+      'use_external_stickers': PermissionFlagsBits.UseExternalStickers,
+      'send_messages_in_threads': PermissionFlagsBits.SendMessagesInThreads,
+      'manage_events': PermissionFlagsBits.ManageEvents,
+      'send_polls': PermissionFlagsBits.SendPolls,
+    };
+    
+    // Check each permission flag and add corresponding string
+    for (const [name, flag] of Object.entries(permissionMap)) {
+      if ((permissionBits & flag) === flag) {
+        permissions.push(name);
+      }
+    }
+    
+    // Debug log the converted permissions
+    this.logger.debug('[PERMISSION-CHECK] Converted permission bits to strings', {
+      permissionBits: permissionBits.toString(),
+      permissions: permissions,
+    });
+    
+    return permissions;
+  }
+
+  /**
+   * Get bot permissions for a guild/channel
+   * This retrieves the bot's actual Discord permissions and converts them to permission strings
+   */
+  private async getBotPermissions(guildId?: string, channelId?: string): Promise<string[]> {
+    const permissions: string[] = [];
+
+    try {
+      // Get Discord client from tool executor
+      const client = this.discordToolExecutor.getClient();
+
+      if (!client) {
+        this.logger.warn('[PERMISSION-CHECK] Discord client not available, using empty permissions');
+        return permissions;
+      }
+
+      // If no guild ID, this is a DM - use basic permissions
+      if (!guildId) {
+        this.logger.debug('[PERMISSION-CHECK] No guild ID (DM), using basic permissions');
+        return ['send_messages'];
+      }
+
+      // Get the guild
+      const guild = await client.guilds.fetch(guildId).catch(() => null);
+
+      if (!guild) {
+        this.logger.warn('[PERMISSION-CHECK] Guild not found, using empty permissions');
+        return permissions;
+      }
+
+      // Get bot's member in the guild
+      const botMember = await guild.members.fetchMe().catch(() => null);
+
+      if (!botMember) {
+        this.logger.warn('[PERMISSION-CHECK] Bot member not found in guild, using empty permissions');
+        return permissions;
+      }
+
+      // Get bot's permissions in the guild
+      const botPermissions = botMember.permissions;
+
+      // Convert PermissionFlagsBits to permission strings
+      const permissionStrings = this.convertPermissionBitsToStrings(botPermissions);
+
+      this.logger.debug('[PERMISSION-CHECK] Retrieved bot permissions', {
+        guildId,
+        channelId,
+        botPermissions: botPermissions.toString(),
+        permissionStrings,
+      });
+
+      return permissionStrings;
+    } catch (error) {
+      this.logger.error('[PERMISSION-CHECK] Failed to get bot permissions', error as Error, {
+        guildId,
+        channelId,
+      });
+      return [];
+    }
   }
 
   /**
@@ -205,9 +345,6 @@ export class DiscordConversationHandler {
       // Update Discord-specific context
       await this.discordContextManager.updateContext(conversationId, message);
 
-      // Get Discord context for cross-channel awareness
-      const discordContext = await this.discordContextManager.getContext(conversationId);
-
       // Add user message to history
       conversationContext.messageHistory.push({
         role: 'user',
@@ -256,7 +393,7 @@ export class DiscordConversationHandler {
           });
 
           return {
-            content: deEscalationResponse,
+            content: deEscalationResponse.content as string,
             tone: 'professional',
             emotion: emotionalContext.emotion.primary,
             metadata: {
@@ -347,8 +484,6 @@ export class DiscordConversationHandler {
             model: finalAiResponse.model,
             tokensUsed: finalAiResponse.tokensUsed,
             processingTime: finalAiResponse.metadata?.processingTime,
-            crossChannelContext: discordContext?.crossChannelContext,
-            temporalContext: discordContext?.temporalContext,
             emotionalAdaptations: this.config.emotionalIntelligence.enabled,
             toolCallsExecuted: toolResults.length,
           },
@@ -398,8 +533,6 @@ export class DiscordConversationHandler {
           model: aiResponse.model,
           tokensUsed: aiResponse.tokensUsed,
           processingTime: aiResponse.metadata?.processingTime,
-          crossChannelContext: discordContext?.crossChannelContext,
-          temporalContext: discordContext?.temporalContext,
           emotionalAdaptations: this.config.emotionalIntelligence.enabled,
         },
       };
@@ -425,6 +558,50 @@ export class DiscordConversationHandler {
   }
 
   /**
+   * Execute tool calls
+   */
+  private async executeToolCalls(
+    toolCalls: any[],
+    conversationContext: ConversationContext
+  ): Promise<ToolExecutionResult[]> {
+    this.logger.info('Executing tool calls', {
+      toolCount: toolCalls.length
+    });
+
+    const results: ToolExecutionResult[] = [];
+    for (const toolCall of toolCalls) {
+      // Get bot permissions for this guild/channel
+      const permissions = await this.getBotPermissions(
+        conversationContext.guildId,
+        conversationContext.channelId
+      );
+
+      // Create execution context from conversation context
+      const executionContext: ExecutionContext = {
+        userId: conversationContext.userId,
+        guildId: conversationContext.guildId,
+        channelId: conversationContext.channelId,
+        permissions: permissions,
+        requestId: this.generateRequestId(),
+        timestamp: new Date(),
+      };
+
+      // Debug log permissions
+      this.logger.debug('[PERMISSION-CHECK] Tool execution context permissions', {
+        toolName: toolCall.name,
+        permissions: permissions,
+        guildId: conversationContext.guildId,
+        channelId: conversationContext.channelId,
+      });
+
+      const result = await this.toolExecutor.executeTool(toolCall, executionContext);
+      results.push(result);
+    }
+
+    return results;
+  }
+
+  /**
    * Start a new conversation
    */
   async startConversation(
@@ -439,7 +616,7 @@ export class DiscordConversationHandler {
         guildId,
       });
 
-      const conversationId = this.generateConversationId(userId, channelId);
+      const conversationId = `${userId}:${channelId}`;
 
       // Create conversation in conversation manager
       const conversation = await this.conversationManager.createConversation(
@@ -557,14 +734,22 @@ export class DiscordConversationHandler {
    * Get tools for AI request
    */
   private getToolsForRequest(): any[] | undefined {
+    this.logger.debug('[DEBUG-TOOLS] getToolsForRequest called', {
+      toolCallingEnabled: this.config.features.toolCalling
+    });
+
     // Only include tools if tool calling is enabled in config
     if (!this.config.features.toolCalling) {
+      this.logger.debug('[DEBUG-TOOLS] Tool calling disabled, returning undefined');
       return undefined;
     }
 
     // Get all tools from registry
     const tools = this.toolRegistry.getAllTools();
-    this.logger.info('[DEBUG-TOOL] getToolsForRequest returning:', { tools: tools ? `${tools.length} tools` : 'undefined' });
+    this.logger.debug('[DEBUG-TOOLS] getToolsForRequest returning:', {
+      totalTools: tools.length,
+      toolNames: tools.map(t => t.name)
+    });
 
     // Convert tools to OpenAI format for AI providers
     const convertedTools = tools.map(tool => ({
@@ -594,45 +779,14 @@ export class DiscordConversationHandler {
         },
       },
     }));
-    
-    // DEBUG: Log the exact tool schema being generated in OpenAI format
-    this.logger.info('[DEBUG-TOOL-SCHEMA] Generated OpenAI format tools:', { tools: JSON.stringify(convertedTools, null, 2) });
-    
-    return convertedTools;
-  }
 
-  /**
-   * Execute tool calls
-   */
-  private async executeToolCalls(
-    toolCalls: any[],
-    conversationContext: ConversationContext
-  ): Promise<ToolExecutionResult[]> {
-    this.logger.info('Executing tool calls', {
-      toolCount: toolCalls.length
+    // DEBUG: Log the exact tool schema being generated in OpenAI format
+    this.logger.debug('[DEBUG-TOOLS] Generated OpenAI format tools:', {
+      toolCount: convertedTools.length,
+      tools: JSON.stringify(convertedTools, null, 2)
     });
 
-    const results: ToolExecutionResult[] = [];
-    for (const toolCall of toolCalls) {
-      const result = await this.toolExecutor.executeTool(toolCall, conversationContext);
-      results.push(result);
-    }
-
-    return results;
-  }
-
-  /**
-   * Create tool handler for Discord tools
-   */
-  private createToolHandler() {
-    // Import DiscordToolExecutor and create instance
-    const { DiscordToolExecutor } = require('../../tools/discord-tools');
-    const discordToolExecutor = new DiscordToolExecutor(this.logger);
-
-    // Return a bound function that executes tools through DiscordToolExecutor
-    return async (toolName: string, parameters: Record<string, any>, context: ExecutionContext) => {
-      return await discordToolExecutor.execute(toolName, parameters);
-    };
+    return convertedTools;
   }
 
   /**
@@ -647,6 +801,22 @@ export class DiscordConversationHandler {
    */
   private getConversationId(message: DiscordMessage): string {
     return `${message.author.id}:${message.channelId}`;
+  }
+
+  /**
+   * Generate unique request ID
+   */
+  private generateRequestId(): string {
+    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Get model for current AI provider
+   */
+  private getModelForProvider(): string {
+    // Use default model since config doesn't have ai property
+    // The actual model selection is handled by the AI provider router
+    return 'gpt-4';
   }
 
   /**

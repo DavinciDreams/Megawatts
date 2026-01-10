@@ -13,6 +13,7 @@ import {
   ABTestConfig,
   ABTestResult,
   ExperimentStatus,
+  VariantResult,
 } from './feedback-model';
 import { Logger } from '../utils/logger';
 
@@ -71,6 +72,7 @@ export interface VariantComparison {
   relativeDifference: number; // percentage
   isSignificant: boolean;
   confidence: number;
+  pValue?: number;
 }
 
 // ============================================================================
@@ -144,9 +146,13 @@ export class ABTestingFramework {
    * @returns Updated experiment
    */
   async startExperiment(experimentId: string): Promise<ABTestExperiment> {
-    const experiment = await this.repository.startExperiment(experimentId);
+    await this.repository.startExperiment(experimentId);
+    const experiment = await this.repository.getExperimentById(experimentId);
+    if (!experiment) {
+      throw new Error('Experiment not found after starting');
+    }
     this.logger.info(`Started A/B test experiment: ${experimentId}`);
-    return experiment!;
+    return experiment;
   }
 
   /**
@@ -156,9 +162,13 @@ export class ABTestingFramework {
    * @returns Updated experiment
    */
   async endExperiment(experimentId: string): Promise<ABTestExperiment> {
-    const experiment = await this.repository.endExperiment(experimentId);
+    await this.repository.endExperiment(experimentId);
+    const experiment = await this.repository.getExperimentById(experimentId);
+    if (!experiment) {
+      throw new Error('Experiment not found after ending');
+    }
     this.logger.info(`Ended A/B test experiment: ${experimentId}`);
-    return experiment!;
+    return experiment;
   }
 
   /**
@@ -395,7 +405,7 @@ export class ABTestingFramework {
       if (variant.isControl) continue;
 
       const comparison = this.compareVariants(control, variant);
-      if (comparison.pValue < bestPValue) {
+      if (comparison.pValue !== undefined && comparison.pValue < bestPValue) {
         bestPValue = comparison.pValue;
         bestVariant = variant;
       }
@@ -453,6 +463,7 @@ export class ABTestingFramework {
       relativeDifference,
       isSignificant: pValue < (1 - this.config.significanceLevel),
       confidence: this.config.significanceLevel,
+      pValue,
     };
   }
 

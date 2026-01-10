@@ -114,8 +114,8 @@ export class PluginDiscovery {
         if (installedPlugin) {
           const similarPlugins = await this.findSimilarPlugins(installedPlugin, limit);
           for (const similar of similarPlugins) {
-            if (!recommendations.find(r => r.pluginId === similar.pluginId) && 
-                !installedPlugins.includes(similar.pluginId)) {
+            if (!recommendations.find(r => r.pluginId === similar.id) &&
+                !installedPlugins.includes(similar.id)) {
               const recommendation: PluginRecommendation = {
                 pluginId: similar.pluginId,
                 plugin: similar,

@@ -207,13 +207,32 @@ export class FeedbackPrioritizer {
    */
   async reprioritizeSuggestions(limit: number = 50): Promise<PrioritizedImprovementList> {
     try {
-      // Get all suggestions with status 'suggested' or 'planned'
-      const allSuggestions = await this.repository.queryFeedback({
-        status: 'suggested',
-      });
+      // Generate new suggestions from feedback
+      // Note: This regenerates suggestions rather than reprioritizing existing ones
+      // because suggestions are generated on-demand from feedback data
+      const feedback = await this.repository.queryFeedback({});
 
-      // Recalculate priority scores
-      const prioritized = allSuggestions.map((suggestion) => ({
+      if (feedback.length === 0) {
+        return {
+          suggestions: [],
+          summary: {
+            total: 0,
+            byPriority: { low: 0, medium: 0, high: 0, urgent: 0 },
+            byEffort: { xs: 0, s: 0, m: 0, l: 0, xl: 0 },
+            totalEstimatedHours: 0,
+          },
+          generatedAt: new Date(),
+        };
+      }
+
+      // Group feedback into potential improvements
+      const groupedFeedback = this.groupFeedback(feedback);
+
+      // Generate suggestions from groups
+      const suggestions = await this.generateSuggestions(groupedFeedback);
+
+      // Calculate priority scores
+      const prioritized = suggestions.map((suggestion) => ({
         ...suggestion,
         priorityBreakdown: this.calculatePriorityScore(suggestion),
       }));
@@ -221,7 +240,7 @@ export class FeedbackPrioritizer {
       // Sort by priority score
       prioritized.sort((a, b) => b.priorityBreakdown.totalScore - a.priorityBreakdown.totalScore);
 
-      // Assign priorities
+      // Assign priorities based on scores
       for (const suggestion of prioritized) {
         suggestion.priority = this.scoreToPriority(suggestion.priorityBreakdown.totalScore);
       }

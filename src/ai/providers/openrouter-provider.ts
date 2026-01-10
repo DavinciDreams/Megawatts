@@ -241,11 +241,16 @@ export class OpenRouterProvider extends BaseAIProvider {
         throw this.createError('Rate limit exceeded', 'rate_limit_exceeded');
       }
 
+      // Ensure model is set BEFORE building request
+      // This allows buildOpenRouterRequest to access the model for tool_choice conversion
+      const model = request.model || 'anthropic/claude-3.5-sonnet';
+      request.model = model;
+
       const requestBody = this.buildOpenRouterRequest(request);
       
       const response = await this.client.chat.completions.create({
         ...requestBody,
-        model: request.model || 'anthropic/claude-3.5-sonnet'
+        model
       });
 
       return this.parseOpenRouterResponse(response, request);
@@ -356,8 +361,37 @@ export class OpenRouterProvider extends BaseAIProvider {
       requestBody.tools = request.tools;
     }
 
+    // Handle tool_choice format - Anthropic requires object format, OpenAI uses string
     if (request.tool_choice) {
-      requestBody.tool_choice = request.tool_choice;
+      const isAnthropicModel = request.model?.startsWith('anthropic/');
+      
+      if (isAnthropicModel && typeof request.tool_choice === 'string') {
+        // Anthropic expects {type: "auto"} instead of "auto"
+        const toolChoiceMap: Record<string, string> = {
+          'auto': 'auto',
+          'required': 'any',
+          'none': 'none'
+        };
+        
+        const anthropicType = toolChoiceMap[request.tool_choice] || 'auto';
+        requestBody.tool_choice = { type: anthropicType };
+        
+        this.logger.debug('[TOOL_CHOICE] Converted tool_choice for Anthropic model', {
+          model: request.model,
+          original: request.tool_choice,
+          converted: requestBody.tool_choice
+        });
+      } else {
+        // OpenAI and other providers use string format
+        requestBody.tool_choice = request.tool_choice;
+        
+        if (isAnthropicModel) {
+          this.logger.debug('[TOOL_CHOICE] Using object format for Anthropic', {
+            model: request.model,
+            tool_choice: requestBody.tool_choice
+          });
+        }
+      }
     }
 
     // Legacy function calling support
