@@ -1,7 +1,10 @@
 -- ============================================================================
--- Learning System Migration for Phase 5
+-- Learning System Migration for Phase5
 -- Advanced Self-Learning Capabilities Tables
 -- ============================================================================
+
+-- Enable pgcrypto extension for UUID generation
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- Patterns table
 CREATE TABLE IF NOT EXISTS learning_patterns (

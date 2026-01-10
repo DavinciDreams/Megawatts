@@ -3,6 +3,9 @@
 -- User Feedback Collection System Tables
 -- ============================================================================
 
+-- Enable pgcrypto extension for UUID generation
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- Feedback table
 CREATE TABLE IF NOT EXISTS feedback (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -146,7 +149,7 @@ CREATE TABLE IF NOT EXISTS migration_metadata (
 -- Track applied migrations
 INSERT INTO migration_metadata (name, version) VALUES
   ('002_create_feedback_tables', '1.0.0'),
-  ('003_create_ab_test_tables', '1.0.0');
+  ('002_create_feedback_tables', '1.0.0');
 
 -- ============================================================================
 -- Grant permissions (if needed)
