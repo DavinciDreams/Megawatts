@@ -55,7 +55,7 @@ export interface SandboxResult {
   sandboxContext: SandboxContext;
 }
 
-export interface FileSystemIsolation {
+interface FileSystemIsolation {
   allowedPaths: string[];
   blockedPaths: string[];
   virtualFileSystem: Map<string, VirtualFile>;
@@ -63,7 +63,7 @@ export interface FileSystemIsolation {
   maxFiles: number;
 }
 
-export interface NetworkIsolation {
+interface NetworkIsolation {
   allowedDomains: string[];
   blockedDomains: string[];
   allowedProtocols: string[];
@@ -72,7 +72,7 @@ export interface NetworkIsolation {
   maxRequests: number;
 }
 
-export interface ApiRestrictions {
+interface ApiRestrictions {
   allowedApis: string[];
   blockedApis: string[];
   rateLimits: Map<string, RateLimit>;
@@ -605,6 +605,22 @@ export class ToolSandbox {
   }
 
   /**
+   * Check if an error is a security-related error
+   */
+  private isSecurityError(error: Error): boolean {
+    const securityErrorMessages = [
+      'access denied',
+      'permission denied',
+      'unauthorized',
+      'forbidden',
+      'blocked',
+      'security violation'
+    ];
+    const lowerMessage = error.message.toLowerCase();
+    return securityErrorMessages.some(msg => lowerMessage.includes(msg));
+  }
+
+  /**
    * Update sandbox configuration
    */
   updateConfig(config: Partial<SandboxConfig>): void {
@@ -623,12 +639,12 @@ export class ToolSandbox {
 // ============================================================================
 
 class FileSystemIsolation {
-  private allowedPaths: string[];
-  private blockedPaths: string[];
-  private virtualFileSystem: Map<string, VirtualFile> = new Map();
-  private sandboxFileSystems: Map<string, Map<string, VirtualFile>> = new Map();
-  private maxFileSizeMB: number;
-  private maxFiles: number;
+  allowedPaths: string[];
+  blockedPaths: string[];
+  virtualFileSystem: Map<string, VirtualFile> = new Map();
+  sandboxFileSystems: Map<string, Map<string, VirtualFile>> = new Map();
+  maxFileSizeMB: number;
+  maxFiles: number;
   private logger: Logger;
 
   constructor(config: {
@@ -676,9 +692,10 @@ class FileSystemIsolation {
   }
 
   writeFile(sandboxId: string, path: string, content: string): boolean {
-    const fs = this.sandboxFileSystems.get(sandboxId);
+    let fs = this.sandboxFileSystems.get(sandboxId);
     if (!fs) {
-      fs.set(sandboxId, new Map());
+      fs = new Map<string, VirtualFile>();
+      this.sandboxFileSystems.set(sandboxId, fs);
     }
 
     const size = Buffer.byteLength(content, 'utf8');
@@ -724,12 +741,12 @@ class FileSystemIsolation {
 // ============================================================================
 
 class NetworkIsolation {
-  private allowedDomains: string[];
-  private blockedDomains: string[];
-  private allowedProtocols: string[];
-  private blockedProtocols: string[];
-  private requestCount: number = 0;
-  private maxRequests: number;
+  allowedDomains: string[];
+  blockedDomains: string[];
+  allowedProtocols: string[];
+  blockedProtocols: string[];
+  requestCount: number = 0;
+  maxRequests: number;
   private logger: Logger;
 
   constructor(config: {
@@ -786,10 +803,10 @@ class NetworkIsolation {
 // ============================================================================
 
 class ApiRestrictions {
-  private allowedApis: string[];
-  private blockedApis: string[];
-  private rateLimits: Map<string, RateLimit> = new Map();
-  private permissionChecks: boolean;
+  allowedApis: string[];
+  blockedApis: string[];
+  rateLimits: Map<string, RateLimit> = new Map();
+  permissionChecks: boolean;
   private logger: Logger;
 
   constructor(config: {

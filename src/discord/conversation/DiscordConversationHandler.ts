@@ -29,7 +29,7 @@ import { EmergencyStopHandler } from '../emotional/EmergencyStopHandler';
 import { Logger } from '../../utils/logger';
 import { ToolRegistry } from '../../ai/tools/tool-registry';
 import { Tool } from '../../types/ai';
-import { ToolExecutor, ExecutionContext, ToolExecutionResult, ToolHandlerFunction } from '../../ai/tools/tool-executor';
+import { ToolExecutor, ExecutionContext, ToolExecutionResult } from '../../ai/tools/tool-executor';
 import { ToolSandbox, SandboxConfig } from '../../ai/tools/tool-sandbox';
 import { DiscordToolExecutor } from '../../tools/discord-tools';
 
@@ -79,6 +79,7 @@ export class DiscordConversationHandler {
       enableFileSystemIsolation: false,
       enableApiRestrictions: false,
       allowedDomains: [],
+      allowedPaths: [],
       blockedPaths: [],
       allowedApis: [],
       blockedApis: []
@@ -101,8 +102,7 @@ export class DiscordConversationHandler {
         retryAttempts: 3,
         retryDelay: 1000
       },
-      this.logger,
-      this.createToolHandler.bind(this)
+      this.logger
     );
 
     this.logger.info('DiscordConversationHandler initialized', {
@@ -614,7 +614,14 @@ export class DiscordConversationHandler {
 
     const results: ToolExecutionResult[] = [];
     for (const toolCall of toolCalls) {
-      const result = await this.toolExecutor.executeTool(toolCall, conversationContext);
+      // Create execution context from conversation context
+      const executionContext: ExecutionContext = {
+        userId: conversationContext.userId,
+        permissions: conversationContext.userPreferences?.permissions || [],
+        requestId: this.generateRequestId(),
+        timestamp: new Date()
+      };
+      const result = await this.toolExecutor.executeTool(toolCall, executionContext);
       results.push(result);
     }
 
@@ -643,10 +650,45 @@ export class DiscordConversationHandler {
   }
 
   /**
+   * Update configuration
+   */
+  updateConfig(updates: Partial<ConversationalDiscordConfig>): void {
+    this.config = { ...this.config, ...updates };
+  }
+
+  /**
+   * Get active conversations
+   */
+  getActiveConversations(): Map<string, ConversationContext> {
+    return new Map(this.activeConversations);
+  }
+
+  /**
+   * Generate conversation ID from user and channel
+   */
+  private generateConversationId(userId: string, channelId: string): string {
+    return `${userId}:${channelId}`;
+  }
+
+  /**
    * Get conversation ID from a Discord message
    */
   private getConversationId(message: DiscordMessage): string {
     return `${message.author.id}:${message.channelId}`;
+  }
+
+  /**
+   * Generate request ID
+   */
+  private generateRequestId(): string {
+    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Get model for current AI provider
+   */
+  private getModelForProvider(): string {
+    return this.config.ai.provider;
   }
 
   /**

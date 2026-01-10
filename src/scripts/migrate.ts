@@ -36,11 +36,11 @@ class MigrationScript {
     
     // Initialize database connection
     this.pool = new Pool({
-      host: process.env.DB_HOST || 'localhost',
-      port: parseInt(process.env.DB_PORT || '5432'),
-      user: process.env.DB_USER || 'botuser',
-      password: process.env.DB_PASSWORD || 'botpass',
-      database: process.env.DB_NAME || 'discord_bot',
+      host: process.env.POSTGRES_HOST || 'localhost',
+      port: parseInt(process.env.POSTGRES_PORT || '5432'),
+      user: process.env.POSTGRES_USER || 'botuser',
+      password: process.env.POSTGRES_PASSWORD || 'botpass',
+      database: process.env.POSTGRES_DATABASE || 'megawatts',
       ssl: this.config.environment === 'production'
     });
 

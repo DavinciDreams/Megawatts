@@ -416,21 +416,15 @@ export class AnthropicProvider extends BaseAIProvider {
 
   async isAvailable(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseURL}/messages`, {
-        method: 'POST',
+      const response = await fetch(`${this.baseURL}/models`, {
+        method: 'GET',
         headers: {
           'x-api-key': this.apiKey,
-          'Content-Type': 'application/json',
           'anthropic-version': '2023-06-01'
         },
-        body: JSON.stringify({
-          model: 'claude-3-haiku-20240307',
-          max_tokens: 10,
-          messages: [{ role: 'user', content: 'test' }]
-        }),
         signal: AbortSignal.timeout(5000)
       });
-      return response.ok || response.status === 400; // 400 is ok for availability check
+      return response.ok;
     } catch (error) {
       this.logger.error('Anthropic provider availability check failed', error as Error);
       return false;

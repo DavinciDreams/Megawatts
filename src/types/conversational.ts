@@ -1,9 +1,54 @@
 /**
  * Conversational Discord Type Definitions
- * 
+ *
  * This file contains TypeScript interfaces and types for
  * conversational Discord mode integration.
  */
+
+// ============================================================================
+// AI CONFIG TYPE
+// ============================================================================
+
+export interface AIConfig {
+  provider: 'openai' | 'anthropic' | 'local' | 'custom';
+  openai?: {
+    apiKey: string;
+    organizationId?: string;
+    model: string;
+    maxTokens: number;
+    temperature: number;
+    baseUrl?: string;
+    timeout: number;
+    retryAttempts: number;
+  };
+  anthropic?: {
+    apiKey: string;
+    model: string;
+    maxTokens: number;
+    temperature: number;
+    timeout: number;
+    retryAttempts: number;
+  };
+  local?: {
+    models: {
+      [modelName: string]: {
+        path: string;
+        type: 'huggingface' | 'ollama' | 'custom';
+        endpoint?: string;
+        parameters?: Record<string, any>;
+      };
+    };
+    defaultModel: string;
+    timeout: number;
+  };
+  custom?: {
+    endpoint: string;
+    apiKey?: string;
+    headers?: Record<string, string>;
+    timeout: number;
+    retryAttempts: number;
+  };
+}
 
 // ============================================================================
 // DISCORD MESSAGE TYPES
@@ -50,6 +95,7 @@ export interface UserPreferences {
   language?: string;
   verbosity?: 'concise' | 'normal' | 'detailed';
   topics?: string[];
+  permissions?: string[];
 }
 
 export interface SentimentAnalysis {
@@ -158,6 +204,7 @@ export interface ConversationalDiscordConfig {
   safety: SafetyConfig;
   rateLimiting: RateLimitingConfig;
   features: ConversationalFeatures;
+  ai: AIConfig;
 }
 
 export interface PersonalityProfile {

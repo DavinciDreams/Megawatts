@@ -60,7 +60,7 @@ import { RedisConnectionManager } from '../storage/database/redis';
 import { MultiLevelCache, CacheLayer, type MultiLevelCacheConfig } from './multiLevelCache';
 import { CacheInvalidationManager, type TTLConfig, type EventInvalidationConfig, type DependencyInvalidationConfig } from './cacheInvalidation';
 import { CachePolicyManager, EvictionPolicy } from './cachePolicies';
-import { CacheWarmer, type WarmUpConfig } from './cacheWarmer';
+import { CacheWarmer, WarmUpStrategy, type WarmUpConfig } from './cacheWarmer';
 
 /**
  * Advanced cache system configuration
@@ -91,7 +91,7 @@ export interface AdvancedCacheSystemConfig {
 
   // Warmer config
   warming?: {
-    strategy?: 'ON_STARTUP' | 'SCHEDULED' | 'PREDICTIVE' | 'MANUAL';
+    strategy?: WarmUpStrategy;
     batchSize?: number;
     delayBetweenBatches?: number;
     maxRetries?: number;
@@ -192,7 +192,7 @@ export class AdvancedCacheSystem {
       defaultPolicy: EvictionPolicy.LRU,
       l1MaxSize: 1000,
       warming: {
-        strategy: 'ON_STARTUP',
+        strategy: WarmUpStrategy.ON_STARTUP,
         batchSize: 10,
         delayBetweenBatches: 100,
         maxRetries: 3,

@@ -11,7 +11,8 @@ import { RedisConnectionManager } from './storage/database/redis';
 import { DistributedLock } from './utils/distributed-lock';
 import { ConversationalDiscordConfig } from './types/conversational';
 import { conversationalConfigManager } from './config/conversationalConfigManager';
-import { aiSDKConfigManager, type AIAdapterConfig } from './config/ai-sdk-config';
+import { aiSDKConfigManager } from './config/ai-sdk-config';
+import { type AIAdapterConfig } from './ai/sdk/ai-sdk-adapter';
 import {
   createDiscordBotIntegration,
   DiscordBotIntegration,
@@ -383,6 +384,7 @@ class SelfEditingDiscordBot {
             enabled: true,
             retentionDays: conversationalDiscordConfig.memory.longTermRetentionDays,
             compressionEnabled: true,
+            useS3: false,
           },
           backup: {
             enabled: false,

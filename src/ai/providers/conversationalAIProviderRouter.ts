@@ -1,6 +1,6 @@
 /**
  * Conversational AI Provider Router
- * 
+ *
  * This module routes AI requests for conversational mode to appropriate
  * providers with fallback and retry logic.
  */
@@ -9,8 +9,8 @@ import {
   ConversationalAIRequest,
   ConversationalAIResponse,
 } from '../../types/conversational';
-import { BaseAIProvider } from '../core/ai-provider';
-import { AIConfiguration } from '../../types/ai';
+import { BaseAIProvider, OpenAIProvider, AnthropicProvider, LocalModelProvider } from '../core/ai-provider';
+import { AIConfiguration, ProviderConfig } from '../../types/ai';
 import { Logger } from '../../utils/logger';
 
 // ============================================================================
@@ -46,6 +46,9 @@ export class ConversationalAIProviderRouter {
   constructor(config: AIConfiguration, logger: Logger) {
     this.config = config;
     this.logger = logger;
+    
+    // Validate configuration before initialization
+    this.validateConfiguration();
     
     this.initializeProviders();
     this.logger.info('ConversationalAIProviderRouter initialized', {
@@ -470,45 +473,261 @@ export class ConversationalAIProviderRouter {
   }
 
   /**
+   * Validate AI provider configuration
+   */
+  private validateConfiguration(): void {
+    this.logger.info('Validating AI provider configuration');
+    
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    // Validate OpenAI configuration
+    if (this.config.providers?.openai) {
+      if (this.config.providers.openai.enabled) {
+        if (!this.config.providers.openai.apiKey) {
+          errors.push('OpenAI provider is enabled but API key is missing');
+        }
+        if (this.config.providers.openai.timeout &&
+            (this.config.providers.openai.timeout < 1000 || this.config.providers.openai.timeout > 300000)) {
+          errors.push('OpenAI timeout must be between 1000ms and 300000ms');
+        }
+        if (this.config.providers.openai.retries &&
+            (this.config.providers.openai.retries < 0 || this.config.providers.openai.retries > 10)) {
+          errors.push('OpenAI retries must be between 0 and 10');
+        }
+      }
+    } else {
+      warnings.push('OpenAI provider configuration not found');
+    }
+
+    // Validate Anthropic configuration
+    if (this.config.providers?.anthropic) {
+      if (this.config.providers.anthropic.enabled) {
+        if (!this.config.providers.anthropic.apiKey) {
+          errors.push('Anthropic provider is enabled but API key is missing');
+        }
+        if (this.config.providers.anthropic.timeout &&
+            (this.config.providers.anthropic.timeout < 1000 || this.config.providers.anthropic.timeout > 300000)) {
+          errors.push('Anthropic timeout must be between 1000ms and 300000ms');
+        }
+        if (this.config.providers.anthropic.retries &&
+            (this.config.providers.anthropic.retries < 0 || this.config.providers.anthropic.retries > 10)) {
+          errors.push('Anthropic retries must be between 0 and 10');
+        }
+      }
+    } else {
+      warnings.push('Anthropic provider configuration not found');
+    }
+
+    // Validate Local LLaMA configuration
+    if (this.config.providers?.local) {
+      if (this.config.providers.local.enabled) {
+        if (!this.config.providers.local.endpoint) {
+          errors.push('Local LLaMA provider is enabled but endpoint is missing');
+        }
+        if (this.config.providers.local.timeout &&
+            (this.config.providers.local.timeout < 1000 || this.config.providers.local.timeout > 300000)) {
+          errors.push('Local LLaMA timeout must be between 1000ms and 300000ms');
+        }
+      }
+    } else {
+      warnings.push('Local LLaMA provider configuration not found');
+    }
+
+    // Log validation results
+    if (errors.length > 0) {
+      this.logger.error('AI provider configuration validation failed', new Error('Configuration validation failed'), {
+        errors,
+      });
+      throw new Error(`AI provider configuration validation failed: ${errors.join('; ')}`);
+    }
+
+    if (warnings.length > 0) {
+      this.logger.warn('AI provider configuration validation warnings', { warnings });
+    }
+
+    // Ensure at least one provider is configured
+    const hasEnabledProvider =
+      (this.config.providers?.openai?.enabled && this.config.providers.openai.apiKey) ||
+      (this.config.providers?.anthropic?.enabled && this.config.providers.anthropic.apiKey) ||
+      (this.config.providers?.local?.enabled && this.config.providers.local.endpoint);
+
+    if (!hasEnabledProvider) {
+      this.logger.error('No AI provider is properly configured', new Error('No provider configured'), {
+        openaiEnabled: this.config.providers?.openai?.enabled,
+        anthropicEnabled: this.config.providers?.anthropic?.enabled,
+        localEnabled: this.config.providers?.local?.enabled,
+      });
+      throw new Error('At least one AI provider must be properly configured with valid credentials/endpoint');
+    }
+
+    this.logger.info('AI provider configuration validation passed', {
+      providersConfigured: [
+        this.config.providers?.openai?.enabled ? 'openai' : null,
+        this.config.providers?.anthropic?.enabled ? 'anthropic' : null,
+        this.config.providers?.local?.enabled ? 'local' : null,
+      ].filter(Boolean),
+    });
+  }
+
+  /**
    * Initialize providers from config
    */
   private initializeProviders(): void {
-    // Note: In a real implementation, this would create actual provider instances
-    // For now, we'll track them conceptually
-    
-    if (this.config.providers?.openai?.apiKey) {
-      // OpenAI provider would be initialized here
-      this.defaultProvider = 'openai';
-    }
+    this.logger.info('Initializing AI providers', {
+      hasOpenAIConfig: !!this.config.providers?.openai,
+      hasAnthropicConfig: !!this.config.providers?.anthropic,
+      hasLocalConfig: !!this.config.providers?.local,
+    });
 
-    if (this.config.providers?.anthropic?.apiKey) {
-      // Anthropic provider would be initialized here
-      if (!this.config.providers?.openai?.apiKey) {
-        this.defaultProvider = 'anthropic';
+    // Initialize OpenAI provider (primary)
+    if (this.config.providers?.openai?.enabled && this.config.providers.openai.apiKey) {
+      try {
+        const openaiConfig: ProviderConfig = {
+          apiKey: this.config.providers.openai.apiKey,
+          endpoint: this.config.providers.openai.endpoint || 'https://api.openai.com/v1',
+          timeout: this.config.providers.openai.timeout || 30000,
+          retries: this.config.providers.openai.retries || 3,
+          customHeaders: this.config.providers.openai.customHeaders || {},
+        };
+
+        const openaiProvider = new OpenAIProvider(openaiConfig, this.logger);
+        this.providers.set('openai', openaiProvider);
+        this.defaultProvider = 'openai';
+        
+        this.logger.info('OpenAI provider initialized successfully', {
+          endpoint: openaiConfig.endpoint,
+          timeout: openaiConfig.timeout,
+        });
+      } catch (error) {
+        this.logger.error('Failed to initialize OpenAI provider', error as Error);
       }
+    } else {
+      this.logger.warn('OpenAI provider not initialized - missing API key or disabled');
     }
 
-    if (this.config.providers?.local?.enabled) {
-      // Local provider would be initialized here
-      if (!this.config.providers?.openai?.apiKey &&
-          !this.config.providers?.anthropic?.apiKey) {
-        this.defaultProvider = 'local';
+    // Initialize Anthropic provider (fallback)
+    if (this.config.providers?.anthropic?.enabled && this.config.providers.anthropic.apiKey) {
+      try {
+        const anthropicConfig: ProviderConfig = {
+          apiKey: this.config.providers.anthropic.apiKey,
+          endpoint: this.config.providers.anthropic.endpoint || 'https://api.anthropic.com/v1',
+          timeout: this.config.providers.anthropic.timeout || 30000,
+          retries: this.config.providers.anthropic.retries || 3,
+          customHeaders: this.config.providers.anthropic.customHeaders || {},
+        };
+
+        const anthropicProvider = new AnthropicProvider(anthropicConfig, this.logger);
+        this.providers.set('anthropic', anthropicProvider);
+        
+        // Set as default if OpenAI is not available
+        if (!this.providers.has('openai')) {
+          this.defaultProvider = 'anthropic';
+        }
+        
+        this.logger.info('Anthropic provider initialized successfully', {
+          endpoint: anthropicConfig.endpoint,
+          timeout: anthropicConfig.timeout,
+        });
+      } catch (error) {
+        this.logger.error('Failed to initialize Anthropic provider', error as Error);
       }
+    } else {
+      this.logger.warn('Anthropic provider not initialized - missing API key or disabled');
     }
 
-    // Initialize health tracking for all providers
-    const providers = ['openai', 'anthropic', 'local'];
-    for (const providerId of providers) {
+    // Initialize Local LLaMA provider (offline capability)
+    if (this.config.providers?.local?.enabled && this.config.providers.local.endpoint) {
+      try {
+        const localConfig: ProviderConfig = {
+          endpoint: this.config.providers.local.endpoint,
+          timeout: this.config.providers.local.timeout || 60000,
+          retries: this.config.providers.local.retries || 3,
+          modelPath: this.config.providers.local.modelPath,
+        };
+
+        const localProvider = new LocalModelProvider(localConfig, this.logger);
+        this.providers.set('local', localProvider);
+        
+        // Set as default if no cloud providers are available
+        if (!this.providers.has('openai') && !this.providers.has('anthropic')) {
+          this.defaultProvider = 'local';
+        }
+        
+        this.logger.info('Local LLaMA provider initialized successfully', {
+          endpoint: localConfig.endpoint,
+          timeout: localConfig.timeout,
+        });
+      } catch (error) {
+        this.logger.error('Failed to initialize Local LLaMA provider', error as Error);
+      }
+    } else {
+      this.logger.warn('Local LLaMA provider not initialized - missing endpoint or disabled');
+    }
+
+    // Initialize health tracking for all configured providers
+    const allProviders = ['openai', 'anthropic', 'local'];
+    for (const providerId of allProviders) {
       const provider = this.providers.get(providerId);
       this.providerHealth.set(providerId, {
         provider: provider || null,
-        available: true,
+        available: !!provider, // Initially assume available if provider exists
         lastCheck: new Date(),
         consecutiveFailures: 0,
         averageResponseTime: 0,
         responseTimeHistory: [],
       });
     }
+
+    // Perform initial health checks on all initialized providers
+    this.performInitialHealthChecks();
+
+    this.logger.info('AI Provider initialization complete', {
+      initializedProviders: Array.from(this.providers.keys()),
+      defaultProvider: this.defaultProvider,
+      totalProviders: this.providers.size,
+    });
+  }
+
+  /**
+   * Perform initial health checks on all initialized providers
+   */
+  private async performInitialHealthChecks(): Promise<void> {
+    this.logger.info('Performing initial health checks on all providers');
+    
+    const healthCheckPromises = Array.from(this.providers.entries()).map(
+      async ([providerId, provider]) => {
+        try {
+          const isAvailable = await provider.isAvailable();
+          const health = this.providerHealth.get(providerId);
+          if (health) {
+            health.available = isAvailable;
+            health.lastCheck = new Date();
+            if (!isAvailable) {
+              health.consecutiveFailures = 1;
+              health.lastError = 'Initial health check failed';
+            }
+            this.providerHealth.set(providerId, health);
+          }
+          
+          this.logger.info(`Health check completed for ${providerId}`, {
+            available: isAvailable,
+          });
+        } catch (error) {
+          this.logger.error(`Health check failed for ${providerId}`, error as Error);
+          const health = this.providerHealth.get(providerId);
+          if (health) {
+            health.available = false;
+            health.consecutiveFailures = 1;
+            health.lastError = (error as Error).message;
+            health.lastCheck = new Date();
+            this.providerHealth.set(providerId, health);
+          }
+        }
+      }
+    );
+
+    await Promise.allSettled(healthCheckPromises);
   }
 
   /**

@@ -50,7 +50,8 @@ export const createRoleTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 10
+      requestsPerMinute: 10,
+      tokensPerMinute: 1000
     }
   },
   parameters: [
@@ -155,7 +156,8 @@ export const updateRoleTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 15
+      requestsPerMinute: 15,
+      tokensPerMinute: 1500
     }
   },
   parameters: [
@@ -260,7 +262,8 @@ export const deleteRoleTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 5
+      requestsPerMinute: 5,
+      tokensPerMinute: 500
     }
   },
   parameters: [
@@ -317,7 +320,8 @@ export const assignRoleTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 20
+      requestsPerMinute: 20,
+      tokensPerMinute: 2000
     }
   },
   parameters: [
@@ -381,7 +385,8 @@ export const removeRoleTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 20
+      requestsPerMinute: 20,
+      tokensPerMinute: 2000
     }
   },
   parameters: [
@@ -449,7 +454,8 @@ export const createChannelTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 10
+      requestsPerMinute: 10,
+      tokensPerMinute: 1000
     }
   },
   parameters: [
@@ -560,7 +566,8 @@ export const updateChannelTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 15
+      requestsPerMinute: 15,
+      tokensPerMinute: 1500
     }
   },
   parameters: [
@@ -646,7 +653,8 @@ export const deleteChannelTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 5
+      requestsPerMinute: 5,
+      tokensPerMinute: 500
     }
   },
   parameters: [
@@ -696,7 +704,8 @@ export const getChannelInfoTool: Tool = {
     monitoring: false,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 60
+      requestsPerMinute: 60,
+      tokensPerMinute: 6000
     }
   },
   parameters: [
@@ -740,7 +749,8 @@ export const kickUserTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 5
+      requestsPerMinute: 5,
+      tokensPerMinute: 500
     }
   },
   parameters: [
@@ -798,7 +808,8 @@ export const banUserTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 3
+      requestsPerMinute: 3,
+      tokensPerMinute: 300
     }
   },
   parameters: [
@@ -867,7 +878,8 @@ export const timeoutUserTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 10
+      requestsPerMinute: 10,
+      tokensPerMinute: 1000
     }
   },
   parameters: [
@@ -936,7 +948,8 @@ export const removeTimeoutTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 20
+      requestsPerMinute: 20,
+      tokensPerMinute: 2000
     }
   },
   parameters: [
@@ -993,7 +1006,8 @@ export const getUserInfoTool: Tool = {
     monitoring: false,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 60
+      requestsPerMinute: 60,
+      tokensPerMinute: 6000
     }
   },
   parameters: [
@@ -1044,7 +1058,8 @@ export const sendMessageTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 50
+      requestsPerMinute: 50,
+      tokensPerMinute: 5000
     }
   },
   parameters: [
@@ -1118,7 +1133,8 @@ export const editMessageTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 30
+      requestsPerMinute: 30,
+      tokensPerMinute: 3000
     }
   },
   parameters: [
@@ -1182,7 +1198,8 @@ export const deleteMessageTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 30
+      requestsPerMinute: 30,
+      tokensPerMinute: 3000
     }
   },
   parameters: [
@@ -1239,7 +1256,8 @@ export const getMessageTool: Tool = {
     monitoring: false,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 60
+      requestsPerMinute: 60,
+      tokensPerMinute: 6000
     }
   },
   parameters: [
@@ -1286,7 +1304,8 @@ export const pinMessageTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 20
+      requestsPerMinute: 20,
+      tokensPerMinute: 2000
     }
   },
   parameters: [
@@ -1333,7 +1352,8 @@ export const unpinMessageTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 20
+      requestsPerMinute: 20,
+      tokensPerMinute: 2000
     }
   },
   parameters: [
@@ -1384,7 +1404,8 @@ export const getServerInfoTool: Tool = {
     monitoring: false,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 60
+      requestsPerMinute: 60,
+      tokensPerMinute: 6000
     }
   },
   parameters: [
@@ -1424,7 +1445,8 @@ export const getServerMembersTool: Tool = {
     monitoring: false,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 30
+      requestsPerMinute: 30,
+      tokensPerMinute: 3000
     }
   },
   parameters: [
@@ -1481,7 +1503,8 @@ export const getServerChannelsTool: Tool = {
     monitoring: false,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 30
+      requestsPerMinute: 30,
+      tokensPerMinute: 3000
     }
   },
   parameters: [
@@ -1535,7 +1558,8 @@ export const createWebhookTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 10
+      requestsPerMinute: 10,
+      tokensPerMinute: 1000
     }
   },
   parameters: [
@@ -1601,7 +1625,8 @@ export const updateWebhookTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 15
+      requestsPerMinute: 15,
+      tokensPerMinute: 1500
     }
   },
   parameters: [
@@ -1671,7 +1696,8 @@ export const deleteWebhookTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 5
+      requestsPerMinute: 5,
+      tokensPerMinute: 500
     }
   },
   parameters: [
@@ -1728,7 +1754,8 @@ export const executeWebhookTool: Tool = {
     monitoring: true,
     sandbox: false,
     rateLimit: {
-      requestsPerMinute: 50
+      requestsPerMinute: 50,
+      tokensPerMinute: 5000
     }
   },
   parameters: [
@@ -1799,6 +1826,411 @@ export const executeWebhookTool: Tool = {
   }
 };
 
+/**
+ * Unban a user from a guild
+ */
+export const unbanUserTool: Tool = {
+  name: 'unban_user',
+  description: 'Unban a user from a Discord guild',
+  category: 'discord',
+  permissions: ['ban_members'],
+  safety: {
+    level: 'restricted',
+    permissions: ['ban_members'],
+    monitoring: true,
+    sandbox: false,
+    rateLimit: {
+      requestsPerMinute: 10,
+      tokensPerMinute: 1000
+    }
+  },
+  parameters: [
+    {
+      name: 'guild_id',
+      type: 'string',
+      required: true,
+      description: 'The ID of the guild'
+    },
+    {
+      name: 'user_id',
+      type: 'string',
+      required: true,
+      description: 'The ID of the user to unban'
+    },
+    {
+      name: 'reason',
+      type: 'string',
+      required: false,
+      description: 'The reason for unbanning the user',
+      validation: {
+        maxLength: 500
+      }
+    }
+  ],
+  metadata: {
+    version: '1.0.0',
+    author: 'AI System',
+    tags: ['discord', 'moderation'],
+    examples: [
+      {
+        description: 'Unban a user',
+        parameters: {
+          guild_id: '123456789012345678',
+          user_id: '987654321098765432',
+          reason: 'Ban period ended'
+        }
+      }
+    ]
+  }
+};
+
+/**
+ * Set permissions for a channel
+ */
+export const setChannelPermissionsTool: Tool = {
+  name: 'set_channel_permissions',
+  description: 'Set permissions for a Discord channel',
+  category: 'discord',
+  permissions: ['manage_channels'],
+  safety: {
+    level: 'restricted',
+    permissions: ['manage_channels'],
+    monitoring: true,
+    sandbox: false,
+    rateLimit: {
+      requestsPerMinute: 15,
+      tokensPerMinute: 1500
+    }
+  },
+  parameters: [
+    {
+      name: 'channel_id',
+      type: 'string',
+      required: true,
+      description: 'The ID of the channel'
+    },
+    {
+      name: 'target',
+      type: 'string',
+      required: true,
+      description: 'The target ID (user or role) to set permissions for'
+    },
+    {
+      name: 'target_type',
+      type: 'string',
+      required: true,
+      description: 'The type of target (user or role)',
+      validation: {
+        enum: ['user', 'role']
+      }
+    },
+    {
+      name: 'permissions',
+      type: 'array',
+      required: true,
+      description: 'Array of permission strings to grant/deny'
+    },
+    {
+      name: 'allow',
+      type: 'boolean',
+      required: false,
+      description: 'Whether to allow (true) or deny (false) permissions',
+      defaultValue: true
+    },
+    {
+      name: 'reason',
+      type: 'string',
+      required: false,
+      description: 'The reason for changing permissions',
+      validation: {
+        maxLength: 500
+      }
+    }
+  ],
+  metadata: {
+    version: '1.0.0',
+    author: 'AI System',
+    tags: ['discord', 'channels', 'permissions', 'management'],
+    examples: [
+      {
+        description: 'Grant send messages permission to a role',
+        parameters: {
+          channel_id: '123456789012345678',
+          target: '987654321098765432',
+          target_type: 'role',
+          permissions: ['SEND_MESSAGES', 'VIEW_CHANNEL'],
+          allow: true,
+          reason: 'Grant access to VIP role'
+        }
+      }
+    ]
+  }
+};
+
+/**
+ * Add a reaction to a message
+ */
+export const addReactionTool: Tool = {
+  name: 'add_reaction',
+  description: 'Add a reaction emoji to a Discord message',
+  category: 'discord',
+  permissions: [],
+  safety: {
+    level: 'safe',
+    permissions: [],
+    monitoring: false,
+    sandbox: false,
+    rateLimit: {
+      requestsPerMinute: 60,
+      tokensPerMinute: 6000
+    }
+  },
+  parameters: [
+    {
+      name: 'channel_id',
+      type: 'string',
+      required: true,
+      description: 'The ID of the channel containing the message'
+    },
+    {
+      name: 'message_id',
+      type: 'string',
+      required: true,
+      description: 'The ID of the message to react to'
+    },
+    {
+      name: 'emoji',
+      type: 'string',
+      required: true,
+      description: 'The emoji to add (custom emoji format: <name:id> or unicode emoji)'
+    }
+  ],
+  metadata: {
+    version: '1.0.0',
+    author: 'AI System',
+    tags: ['discord', 'reactions', 'safe'],
+    examples: [
+      {
+        description: 'Add a thumbs up reaction',
+        parameters: {
+          channel_id: '123456789012345678',
+          message_id: '987654321098765432',
+          emoji: '👍'
+        }
+      }
+    ]
+  }
+};
+
+/**
+ * Update server (guild) settings
+ */
+export const updateServerTool: Tool = {
+  name: 'update_server',
+  description: 'Update Discord server (guild) settings',
+  category: 'discord',
+  permissions: ['manage_guild'],
+  safety: {
+    level: 'dangerous',
+    permissions: ['manage_guild'],
+    monitoring: true,
+    sandbox: false,
+    rateLimit: {
+      requestsPerMinute: 5,
+      tokensPerMinute: 500
+    }
+  },
+  parameters: [
+    {
+      name: 'guild_id',
+      type: 'string',
+      required: true,
+      description: 'The ID of the guild to update'
+    },
+    {
+      name: 'name',
+      type: 'string',
+      required: false,
+      description: 'The new name for the server',
+      validation: {
+        minLength: 2,
+        maxLength: 100
+      }
+    },
+    {
+      name: 'description',
+      type: 'string',
+      required: false,
+      description: 'The new description for the server',
+      validation: {
+        maxLength: 500
+      }
+    },
+    {
+      name: 'verification_level',
+      type: 'number',
+      required: false,
+      description: 'Verification level (0-4)',
+      validation: {
+        min: 0,
+        max: 4
+      }
+    },
+    {
+      name: 'default_message_notifications',
+      type: 'number',
+      required: false,
+      description: 'Default message notification level (0-1)',
+      validation: {
+        min: 0,
+        max: 1
+      }
+    },
+    {
+      name: 'explicit_content_filter',
+      type: 'number',
+      required: false,
+      description: 'Explicit content filter level (0-2)',
+      validation: {
+        min: 0,
+        max: 2
+      }
+    },
+    {
+      name: 'afk_channel_id',
+      type: 'string',
+      required: false,
+      description: 'The ID of the AFK channel'
+    },
+    {
+      name: 'afk_timeout',
+      type: 'number',
+      required: false,
+      description: 'AFK timeout in seconds (60, 300, 900, 1800, 3600)',
+      validation: {
+        enum: [60, 300, 900, 1800, 3600]
+      }
+    },
+    {
+      name: 'system_channel_id',
+      type: 'string',
+      required: false,
+      description: 'The ID of the system channel'
+    },
+    {
+      name: 'reason',
+      type: 'string',
+      required: false,
+      description: 'The reason for updating the server',
+      validation: {
+        maxLength: 500
+      }
+    }
+  ],
+  metadata: {
+    version: '1.0.0',
+    author: 'AI System',
+    tags: ['discord', 'server', 'management', 'dangerous'],
+    examples: [
+      {
+        description: 'Update server name and description',
+        parameters: {
+          guild_id: '123456789012345678',
+          name: 'New Server Name',
+          description: 'Updated server description',
+          reason: 'Server rebranding'
+        }
+      }
+    ]
+  }
+};
+
+/**
+ * Create an invite for a channel
+ */
+export const createInviteTool: Tool = {
+  name: 'create_invite',
+  description: 'Create an invite link for a Discord channel',
+  category: 'discord',
+  permissions: ['create_instant_invite'],
+  safety: {
+    level: 'restricted',
+    permissions: ['create_instant_invite'],
+    monitoring: true,
+    sandbox: false,
+    rateLimit: {
+      requestsPerMinute: 20,
+      tokensPerMinute: 2000
+    }
+  },
+  parameters: [
+    {
+      name: 'channel_id',
+      type: 'string',
+      required: true,
+      description: 'The ID of the channel to create the invite for'
+    },
+    {
+      name: 'max_age',
+      type: 'number',
+      required: false,
+      description: 'Duration of invite in seconds (0 for never)',
+      validation: {
+        min: 0,
+        max: 604800
+      }
+    },
+    {
+      name: 'max_uses',
+      type: 'number',
+      required: false,
+      description: 'Maximum number of uses (0 for unlimited)',
+      validation: {
+        min: 0,
+        max: 100
+      }
+    },
+    {
+      name: 'temporary',
+      type: 'boolean',
+      required: false,
+      description: 'Whether the invite grants temporary membership'
+    },
+    {
+      name: 'unique',
+      type: 'boolean',
+      required: false,
+      description: 'Whether the invite should be unique'
+    },
+    {
+      name: 'reason',
+      type: 'string',
+      required: false,
+      description: 'The reason for creating the invite',
+      validation: {
+        maxLength: 500
+      }
+    }
+  ],
+  metadata: {
+    version: '1.0.0',
+    author: 'AI System',
+    tags: ['discord', 'invites', 'management'],
+    examples: [
+      {
+        description: 'Create a temporary invite',
+        parameters: {
+          channel_id: '123456789012345678',
+          max_age: 3600,
+          max_uses: 10,
+          temporary: true,
+          reason: 'Temporary invite for event'
+        }
+      }
+    ]
+  }
+};
+
 // ============================================================================
 // TOOL COLLECTION
 // ============================================================================
@@ -1841,7 +2273,14 @@ export const discordTools: Tool[] = [
   createWebhookTool,
   updateWebhookTool,
   deleteWebhookTool,
-  executeWebhookTool
+  executeWebhookTool,
+
+  // Additional Tools
+  unbanUserTool,
+  setChannelPermissionsTool,
+  addReactionTool,
+  updateServerTool,
+  createInviteTool
 ];
 
 // ============================================================================
@@ -1871,7 +2310,6 @@ function parseChannelType(type: string): ChannelType {
     'voice': ChannelType.GuildVoice,
     'category': ChannelType.GuildCategory,
     'news': ChannelType.GuildAnnouncement,
-    'store': ChannelType.GuildStore,
     'stage': ChannelType.GuildStageVoice
   };
   return typeMap[type] || ChannelType.GuildText;
@@ -2023,6 +2461,18 @@ export class DiscordToolExecutor {
           return this.deleteWebhook(parameters);
         case 'execute_webhook':
           return this.executeWebhook(parameters);
+
+        // Additional Tools
+        case 'unban_user':
+          return this.unbanUser(parameters);
+        case 'set_channel_permissions':
+          return this.setChannelPermissions(parameters);
+        case 'add_reaction':
+          return this.addReaction(parameters);
+        case 'update_server':
+          return this.updateServer(parameters);
+        case 'create_invite':
+          return this.createInvite(parameters);
 
         default:
           throw new BotError(
@@ -2232,12 +2682,12 @@ export class DiscordToolExecutor {
       
       const channel = await guild.channels.create({
         name,
-        type: channelType,
+        type: channelType as any,
         topic,
         nsfw,
         parent: parent_id,
         position,
-        permissionOverwrites,
+        permissionOverwrites: permission_overwrites,
         rateLimitPerUser: rate_limit_per_user,
         reason: parameters.reason
       });
@@ -2794,8 +3244,7 @@ export class DiscordToolExecutor {
       const guild = await this.getGuild(guild_id);
       
       const members = await guild.members.fetch({
-        limit: limit || 100,
-        after: after
+        limit: limit || 100
       });
 
       const membersList = members.map(member => ({
@@ -2986,6 +3435,174 @@ export class DiscordToolExecutor {
       this.logger.error('Failed to execute webhook', error);
       throw new BotError(
         `Failed to execute webhook: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
+  }
+
+  // ============================================================================
+  // ADDITIONAL TOOL IMPLEMENTATIONS
+  // ============================================================================
+
+  private async unbanUser(parameters: any): Promise<any> {
+    const { guild_id, user_id, reason } = parameters;
+    
+    try {
+      const guild = await this.getGuild(guild_id);
+      
+      await guild.bans.remove(user_id, reason);
+
+      this.logger.info(`User unbanned successfully: ${user_id}`);
+      return {
+        success: true,
+        user_id,
+        message: 'User unbanned successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to unban user', error);
+      throw new BotError(
+        `Failed to unban user: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
+  }
+
+  private async setChannelPermissions(parameters: any): Promise<any> {
+    const { channel_id, target, target_type, permissions, allow, reason } = parameters;
+    
+    try {
+      const channel = await this.getChannel(channel_id) as any;
+      
+      if (!channel) {
+        throw new BotError(`Channel not found: ${channel_id}`, 'medium', { channel_id });
+      }
+
+      const permissionBits = permissions ? parsePermissions(permissions) : undefined;
+      const overwriteType = target_type === 'user' ? 1 : 0; // 1 = Member, 0 = Role
+
+      await channel.permissionOverwrites.create({
+        id: target,
+        type: overwriteType,
+        allow: allow ? permissionBits : undefined,
+        deny: allow ? undefined : permissionBits,
+        reason
+      });
+
+      this.logger.info(`Channel permissions set successfully: ${channel_id} for ${target_type} ${target}`);
+      return {
+        success: true,
+        channel_id,
+        target,
+        target_type,
+        message: 'Channel permissions set successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to set channel permissions', error);
+      throw new BotError(
+        `Failed to set channel permissions: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
+  }
+
+  private async addReaction(parameters: any): Promise<any> {
+    const { channel_id, message_id, emoji } = parameters;
+    
+    try {
+      const channel = await this.getChannel(channel_id) as any;
+      
+      if (!channel || !channel.messages) {
+        throw new BotError(`Cannot add reactions in channel: ${channel_id}`, 'medium', { channel_id });
+      }
+
+      const message = await channel.messages.fetch(message_id);
+      await message.react(emoji);
+
+      this.logger.info(`Reaction added successfully: ${emoji} to message ${message_id}`);
+      return {
+        success: true,
+        message_id,
+        emoji,
+        message: 'Reaction added successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to add reaction', error);
+      throw new BotError(
+        `Failed to add reaction: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
+  }
+
+  private async updateServer(parameters: any): Promise<any> {
+    const { guild_id, name, description, verification_level, default_message_notifications, explicit_content_filter, afk_channel_id, afk_timeout, system_channel_id, reason } = parameters;
+    
+    try {
+      const guild = await this.getGuild(guild_id);
+      
+      const updateOptions: any = {
+        name,
+        description,
+        verificationLevel: verification_level,
+        defaultMessageNotifications: default_message_notifications,
+        explicitContentFilter: explicit_content_filter,
+        afkChannel: afk_channel_id,
+        afkTimeout: afk_timeout,
+        systemChannel: system_channel_id,
+        reason
+      };
+
+      await guild.edit(updateOptions);
+
+      this.logger.info(`Server updated successfully: ${guild_id}`);
+      return {
+        success: true,
+        guild_id,
+        message: 'Server updated successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to update server', error);
+      throw new BotError(
+        `Failed to update server: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
+  }
+
+  private async createInvite(parameters: any): Promise<any> {
+    const { channel_id, max_age, max_uses, temporary, unique, reason } = parameters;
+    
+    try {
+      const channel = await this.getChannel(channel_id) as any;
+      
+      if (!channel || !channel.createInvite) {
+        throw new BotError(`Cannot create invites in channel: ${channel_id}`, 'medium', { channel_id });
+      }
+
+      const invite = await channel.createInvite({
+        maxAge: max_age,
+        maxUses: max_uses,
+        temporary,
+        unique,
+        reason
+      });
+
+      this.logger.info(`Invite created successfully: ${invite.code}`);
+      return {
+        success: true,
+        invite_code: invite.code,
+        invite_url: invite.url,
+        message: 'Invite created successfully'
+      };
+    } catch (error: any) {
+      this.logger.error('Failed to create invite', error);
+      throw new BotError(
+        `Failed to create invite: ${error.message}`,
         'high',
         { parameters, originalError: error.message }
       );

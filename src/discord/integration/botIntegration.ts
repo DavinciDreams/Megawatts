@@ -394,7 +394,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       this.aiProviderRouter.registerProvider('openai', openaiProvider);
       this.logger.info('OpenAI provider registered');
     } else {
-      this.logger.warn('[AI-PROVIDER-REG] OpenAI NOT registered - enabled:', providers?.openai?.enabled, 'apiKey present:', !!providers?.openai?.apiKey);
+      this.logger.warn('[AI-PROVIDER-REG] OpenAI NOT registered', { enabled: providers?.openai?.enabled, apiKeyPresent: !!providers?.openai?.apiKey });
     }
 
     // Register Anthropic provider if configured
@@ -412,7 +412,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       this.aiProviderRouter.registerProvider('anthropic', anthropicProvider);
       this.logger.info('Anthropic provider registered');
     } else {
-      this.logger.warn('[AI-PROVIDER-REG] Anthropic NOT registered - enabled:', providers?.anthropic?.enabled, 'apiKey present:', !!providers?.anthropic?.apiKey);
+      this.logger.warn('[AI-PROVIDER-REG] Anthropic NOT registered', { enabled: providers?.anthropic?.enabled, apiKeyPresent: !!providers?.anthropic?.apiKey });
     }
 
     // Register Local model provider if configured
@@ -430,7 +430,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       this.aiProviderRouter.registerProvider('local', localProvider);
       this.logger.info('Local model provider registered');
     } else {
-      this.logger.warn('[AI-PROVIDER-REG] Local NOT registered - enabled:', providers?.local?.enabled);
+      this.logger.warn('[AI-PROVIDER-REG] Local NOT registered', { enabled: providers?.local?.enabled });
     }
 
     const registeredProviders = this.aiProviderRouter.getProviders();

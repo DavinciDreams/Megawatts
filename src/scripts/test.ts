@@ -99,18 +99,18 @@ class TestScript {
     // Set environment variables for testing
     process.env.NODE_ENV = 'test';
     process.env.LOG_LEVEL = 'error';
-    process.env.DB_NAME = `${process.env.DB_NAME || 'discord_bot'}_test`;
+    process.env.POSTGRES_DATABASE = `${process.env.POSTGRES_DATABASE || 'megawatts'}_test`;
     process.env.REDIS_DB = '15'; // Use dedicated Redis DB for tests
 
     // Create test configuration file
     const testConfig = {
       environment: 'test',
       database: {
-        host: process.env.DB_HOST || 'localhost',
-        port: parseInt(process.env.DB_PORT || '5432'),
-        user: process.env.DB_USER || 'botuser',
-        password: process.env.DB_PASSWORD || 'botpass',
-        database: process.env.DB_NAME || 'discord_bot_test'
+        host: process.env.POSTGRES_HOST || 'localhost',
+        port: parseInt(process.env.POSTGRES_PORT || '5432'),
+        user: process.env.POSTGRES_USER || 'botuser',
+        password: process.env.POSTGRES_PASSWORD || 'botpass',
+        database: process.env.POSTGRES_DATABASE || 'megawatts_test'
       },
       redis: {
         host: process.env.REDIS_HOST || 'localhost',
