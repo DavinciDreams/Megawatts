@@ -6,6 +6,7 @@
  */
 
 import { z } from 'zod';
+import { ExecutionContext } from '../ai/tools/tool-executor';
 
 // ============================================================================
 // CORE AI TYPES
@@ -437,6 +438,7 @@ export interface Tool {
   permissions: string[];
   safety: ToolSafety;
   metadata: ToolMetadata;
+  execute(parameters: Record<string, any>, context: ExecutionContext): Promise<any>;
 }
 
 export interface ToolParameter {

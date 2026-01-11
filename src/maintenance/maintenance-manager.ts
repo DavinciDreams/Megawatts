@@ -364,9 +364,36 @@ export class MaintenanceManager extends EventEmitter {
    * @returns Team member or null
    */
   private async getSecurityTeamMember(): Promise<{ id: string; name: string } | null> {
-    // This is a placeholder implementation
-    // In production, query actual team members
-    return { id: 'security-team-lead', name: 'Security Team Lead' };
+    try {
+      this.logger.debug('Getting security team member for assignment');
+
+      // Query security team members from database
+      const securityTeamMembers = await this.repository.getSecurityTeamMembers({
+        where: 'on_call = $1',
+        params: [true],
+        orderBy: 'priority',
+        orderDirection: 'ASC',
+        limit: 1,
+      });
+
+      // Return the first on-call team member
+      if (securityTeamMembers.length > 0) {
+        const member = securityTeamMembers[0];
+        this.logger.debug(`Found on-call security team member: ${member.name}`);
+        return {
+          id: member.id,
+          name: member.name,
+        };
+      }
+
+      // Fallback to a default if no on-call member found
+      this.logger.warn('No on-call security team member found, using fallback');
+      return { id: 'security-team-lead', name: 'Security Team Lead' };
+
+    } catch (error) {
+      this.logger.error('Error getting security team member:', error);
+      return { id: 'security-team-lead', name: 'Security Team Lead' };
+    }
   }
 
   /**
@@ -745,23 +772,146 @@ export class MaintenanceManager extends EventEmitter {
    * @param task - Completed maintenance task
    */
   private async trackPerformanceForTask(task: MaintenanceTask): Promise<void> {
-    // This is a placeholder implementation
-    // In production, integrate with performance metrics collection
+    try {
+      this.logger.debug(`Tracking performance for task: ${task.id}`);
 
-    const optimization: PerformanceOptimizationResult = {
-      id: `perf-${Date.now()}`,
-      type: 'code',
-      description: `Performance tracking for task: ${task.title}`,
-      beforeMetrics: {},
-      afterMetrics: {},
-      improvement: 0,
-      implementedAt: new Date(),
-      status: 'in_progress',
-    };
+      // Extract before and after metrics from task metadata
+      const beforeMetrics: Record<string, number> = {};
+      const afterMetrics: Record<string, number> = {};
+      const improvements: Record<string, number> = {};
 
-    this.performanceOptimizations.push(optimization);
+      // Get optimization type from task tags or metadata
+      const optimizationType = this.getOptimizationType(task);
 
-    this.emit('performanceTracked', { task, optimization });
+      // Extract metrics based on task type
+      if (task.metadata) {
+        // Before metrics
+        if (task.metadata.beforeMetrics) {
+          for (const [key, value] of Object.entries(task.metadata.beforeMetrics)) {
+            beforeMetrics[key] = this.getMetricValue(value);
+          }
+        }
+
+        // After metrics
+        if (task.metadata.afterMetrics) {
+          for (const [key, value] of Object.entries(task.metadata.afterMetrics)) {
+            afterMetrics[key] = this.getMetricValue(value);
+          }
+        }
+      }
+
+      // Calculate improvements
+      let totalImprovement = 0;
+      let metricCount = 0;
+
+      for (const key of Object.keys(beforeMetrics)) {
+        if (afterMetrics[key] !== undefined) {
+          const improvement = ((beforeMetrics[key] - afterMetrics[key]) / beforeMetrics[key]) * 100;
+          improvements[key] = improvement;
+          totalImprovement += improvement;
+          metricCount++;
+        }
+      }
+
+      const averageImprovement = metricCount > 0 ? totalImprovement / metricCount : 0;
+
+      // Create performance tracking record in database
+      await this.repository.createPerformanceTracking({
+        taskId: task.id,
+        taskTitle: task.title,
+        taskType: task.type,
+        beforeMetrics,
+        afterMetrics,
+        improvements,
+        averageImprovement,
+        actualHours: task.actualHours || 0,
+        estimatedHours: task.estimatedHours || 0,
+        trackedAt: new Date(),
+      });
+
+      // Create optimization result
+      const optimization: PerformanceOptimizationResult = {
+        id: `perf-${Date.now()}`,
+        type: optimizationType,
+        description: `Performance tracking for task: ${task.title}`,
+        beforeMetrics,
+        afterMetrics,
+        improvement: averageImprovement,
+        implementedAt: new Date(),
+        status: 'completed',
+      };
+
+      this.performanceOptimizations.push(optimization);
+
+      this.logger.debug(`Performance tracking completed for task ${task.id}: ${averageImprovement.toFixed(2)}% improvement`);
+      this.emit('performanceTracked', { task, optimization });
+
+    } catch (error) {
+      this.logger.error(`Error tracking performance for task ${task.id}:`, error);
+    }
+  }
+
+  /**
+   * Get optimization type from task
+   * @param task - Maintenance task
+   * @returns Optimization type
+   */
+  private getOptimizationType(task: MaintenanceTask): 'database' | 'cache' | 'api' | 'code' | 'infrastructure' {
+    // Check tags for type hints
+    if (task.tags) {
+      if (task.tags.includes('database') || task.tags.includes('db')) {
+        return 'database';
+      }
+      if (task.tags.includes('cache') || task.tags.includes('redis')) {
+        return 'cache';
+      }
+      if (task.tags.includes('api') || task.tags.includes('endpoint')) {
+        return 'api';
+      }
+      if (task.tags.includes('infrastructure') || task.tags.includes('infra')) {
+        return 'infrastructure';
+      }
+    }
+
+    // Check task type
+    if (task.type === MaintenanceType.DEPENDENCY_UPDATE) {
+      return 'code';
+    }
+
+    // Check title for hints
+    const title = task.title.toLowerCase();
+    if (title.includes('database') || title.includes('db') || title.includes('query')) {
+      return 'database';
+    }
+    if (title.includes('cache') || title.includes('redis') || title.includes('memcached')) {
+      return 'cache';
+    }
+    if (title.includes('api') || title.includes('endpoint') || title.includes('route')) {
+      return 'api';
+    }
+    if (title.includes('infrastructure') || title.includes('server') || title.includes('deployment')) {
+      return 'infrastructure';
+    }
+
+    return 'code';
+  }
+
+  /**
+   * Get metric value from various formats
+   * @param value - Metric value
+   * @returns Number value
+   */
+  private getMetricValue(value: any): number {
+    if (typeof value === 'number') {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const parsed = parseFloat(value);
+      if (!isNaN(parsed)) {
+        return parsed;
+      }
+    }
+    return 0;
   }
 
   /**

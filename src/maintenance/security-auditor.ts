@@ -420,12 +420,95 @@ export class SecurityAuditor extends EventEmitter {
    */
   private async checkIfPackageOutdated(packageName: string, currentVersion: string): Promise<boolean> {
     try {
-      // In production, use npm registry API to check for latest version
-      // For now, return false to avoid unnecessary findings
-      return false;
+      const { fetch } = require('node-fetch');
+      const registryUrl = process.env.NPM_REGISTRY_URL || 'https://registry.npmjs.org';
+      
+      // Fetch package metadata from npm registry
+      const response = await fetch(`${registryUrl}/${packageName}`, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'npm/1.0.0',
+        },
+      });
+      
+      if (!response.ok) {
+        this.logger.warn(`Failed to fetch package info for ${packageName}: ${response.status}`);
+        return false;
+      }
+      
+      const packageData = await response.json();
+      const latestVersion = packageData['dist-tags']?.latest;
+      
+      if (!latestVersion) {
+        return false;
+      }
+      
+      // Simple version comparison (not full semver, just basic comparison)
+      const isOutdated = this.isVersionOutdated(currentVersion, latestVersion);
+      
+      if (isOutdated) {
+        this.logger.debug(`Package ${packageName} is outdated: ${currentVersion} < ${latestVersion}`);
+      }
+      
+      return isOutdated;
     } catch (error) {
       this.logger.warn(`Failed to check if package ${packageName} is outdated:`, error);
       return false;
+    }
+  }
+  
+  /**
+   * Simple version comparison to check if current version is outdated
+   * @param currentVersion - Current version
+   * @param latestVersion - Latest version from registry
+   * @returns True if current version is outdated
+   */
+  private isVersionOutdated(currentVersion: string, latestVersion: string): boolean {
+    const parseVersion = (v: string): number[] => {
+      const parts = v.replace(/^v/, '').split(/[.-]/);
+      return parts.map(p => parseInt(p, 10) || 0);
+    };
+    
+    const current = parseVersion(currentVersion);
+    const latest = parseVersion(latestVersion);
+    
+    // Compare major, minor, patch versions
+    for (let i = 0; i < Math.max(current.length, latest.length); i++) {
+      const c = current[i] || 0;
+      const l = latest[i] || 0;
+      
+      if (c < l) {
+        return true;
+      } else if (c > l) {
+        return false;
+      }
+    }
+    
+    // If we get here, versions are equal
+    return false;
+  }
+  
+  /**
+   * Map npm severity to SecuritySeverity
+   * @param npmSeverity - npm severity string
+   * @returns SecuritySeverity enum value
+   */
+  private mapNpmSeverity(npmSeverity: string): SecuritySeverity {
+    const severityLower = npmSeverity.toLowerCase();
+    switch (severityLower) {
+      case 'critical':
+        return SecuritySeverity.CRITICAL;
+      case 'high':
+        return SecuritySeverity.HIGH;
+      case 'moderate':
+      case 'medium':
+        return SecuritySeverity.MEDIUM;
+      case 'low':
+        return SecuritySeverity.LOW;
+      case 'info':
+        return SecuritySeverity.INFO;
+      default:
+        return SecuritySeverity.LOW;
     }
   }
 
@@ -2255,17 +2338,106 @@ export class SecurityAuditor extends EventEmitter {
     };
 
     try {
-      // This is a placeholder implementation
-      // In production, integrate with penetration testing tools like Burp Suite,
-      // OWASP ZAP, or external penetration testing services
-
-      // Simulate penetration test findings
-      result.overallScore = 85;
+      // Integrate with penetration testing tools
+      // For this implementation, we'll use npm audit for dependency scanning
+      // and integrate with external penetration testing service if configured
+      
+      const { exec } = require('child_process');
+      
+      // Run npm audit for dependency vulnerabilities
+      const npmAuditResult = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+        exec('npm audit --json', { cwd: process.cwd() }, (error: Error | null, stdout: string, stderr: string) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve({ stdout, stderr });
+          }
+        });
+      });
+      
+      // Parse npm audit results
+      let auditFindings: SecurityFinding[] = [];
+      let overallScore = 100;
+      
+      if (npmAuditResult.stdout) {
+        try {
+          const auditData = JSON.parse(npmAuditResult.stdout);
+          
+          // Process vulnerabilities
+          if (auditData.vulnerabilities && Array.isArray(auditData.vulnerabilities)) {
+            for (const vuln of auditData.vulnerabilities) {
+              const severity = this.mapNpmSeverity(vuln.severity);
+              auditFindings.push({
+                id: `pentest-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                type: 'dependency_vulnerability',
+                severity,
+                title: `Vulnerability in ${vuln.packageName}`,
+                description: `${vuln.title || 'Security vulnerability'} in package ${vuln.packageName}@${vuln.version}`,
+                location: `package.json: ${vuln.packageName}`,
+                recommendation: vuln.patchAvailable
+                  ? `Update to version ${vuln.patchVersions?.[0]} or later`
+                  : 'Monitor for patch release',
+                cvssScore: vuln.cvss?.score,
+                affectedComponents: [vuln.packageName],
+                discoveredAt: new Date(),
+              });
+              
+              // Reduce score based on severity
+              switch (severity) {
+                case SecuritySeverity.CRITICAL:
+                  overallScore -= 25;
+                  break;
+                case SecuritySeverity.HIGH:
+                  overallScore -= 15;
+                  break;
+                case SecuritySeverity.MEDIUM:
+                  overallScore -= 5;
+                  break;
+                case SecuritySeverity.LOW:
+                  overallScore -= 1;
+                  break;
+              }
+            }
+          }
+          
+          // Process advisories
+          if (auditData.advisories && Array.isArray(auditData.advisories)) {
+            for (const advisory of auditData.advisories) {
+              auditFindings.push({
+                id: `pentest-advisory-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                type: 'security_advisory',
+                severity: SecuritySeverity.MEDIUM,
+                title: `Security advisory: ${advisory.title}`,
+                description: advisory.overview || 'Security advisory detected',
+                location: 'npm registry',
+                recommendation: 'Review and apply security recommendations',
+                affectedComponents: ['dependencies'],
+                discoveredAt: new Date(),
+              });
+              overallScore -= 5;
+            }
+          }
+        } catch (parseError) {
+          this.logger.warn('Failed to parse npm audit output:', parseError);
+        }
+      }
+      
+      // If configured, integrate with external penetration testing service
+      const penTestProvider = process.env.PENETRATION_TEST_PROVIDER || 'local';
+      
+      if (penTestProvider !== 'local') {
+        // External penetration testing service integration
+        // This would integrate with services like Snyk, Burp Suite, OWASP ZAP
+        // For now, log that external service is configured
+        this.logger.info(`External penetration testing provider: ${penTestProvider}`);
+      }
+      
+      result.overallScore = Math.max(0, overallScore);
       result.passed = result.overallScore >= 80;
-
+      
       result.status = 'completed';
-      this.logger.info(`Penetration test completed: ${scheduleId}, Score: ${result.overallScore}`);
-
+      this.logger.info(`Penetration test completed: ${scheduleId}, Score: ${result.overallScore}, Findings: ${auditFindings.length}`);
+      
     } catch (error) {
       result.status = 'failed';
       this.logger.error(`Penetration test failed: ${scheduleId}`, error);

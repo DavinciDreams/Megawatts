@@ -677,7 +677,7 @@ export class ToolRegistry {
     }
 
     // Check if user has any of the required permissions
-    const hasPermission = toolPerms.some(perm => userPermissions.includes(perm));
+    const hasPermission = toolPerms.every(perm => userPermissions.includes(perm));
 
     this.logger.debug('[DEBUG-TOOLS] Permission check result', {
       toolName,

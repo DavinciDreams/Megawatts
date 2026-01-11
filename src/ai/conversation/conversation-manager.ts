@@ -557,11 +557,82 @@ export class ConversationManager {
   }
 
   /**
-   * Get user preferences (placeholder)
+   * Get user preferences
    */
-  private async getUserPreferences(userId: string): Promise<UserPreferences | undefined> {
-    // This would integrate with user preference system
-    return undefined;
+  private async getUserPreferences(userId: string): Promise<UserPreferences> {
+    try {
+      // Try to load from database
+      const preferences = await this.loadUserPreferencesFromDatabase(userId);
+      
+      if (preferences) {
+        this.logger.debug('Loaded user preferences from database', { userId });
+        return preferences;
+      }
+      
+      // Return default preferences if not found
+      return this.getDefaultUserPreferences();
+    } catch (error) {
+      this.logger.error('Failed to load user preferences', error as Error, { userId });
+      return this.getDefaultUserPreferences();
+    }
+  }
+
+  /**
+   * Load user preferences from database
+   */
+  private async loadUserPreferencesFromDatabase(userId: string): Promise<UserPreferences | null> {
+    // TODO: Implement database integration
+    // For now, return null to use default preferences
+    this.logger.debug('User preferences database integration not yet implemented', { userId });
+    return null;
+  }
+
+  /**
+   * Get default user preferences
+   */
+  private getDefaultUserPreferences(): UserPreferences {
+    return {
+      id: `default_${Date.now()}`,
+      userId: 'default',
+      language: 'en',
+      timezone: 'UTC',
+      communicationStyle: {
+        formality: 'casual',
+        verbosity: 'balanced',
+        tone: 'friendly',
+        responseSpeed: 'normal'
+      },
+      privacy: {
+        dataCollection: true,
+        conversationHistory: true,
+        personalization: true,
+        analytics: true,
+        sharing: false
+      },
+      accessibility: {
+        fontSize: 'medium',
+        highContrast: false,
+        screenReader: false,
+        keyboardNavigation: true,
+        reducedMotion: false,
+        colorBlindMode: 'none'
+      },
+      aiPreferences: {
+        model: 'gpt-4',
+        temperature: 0.7,
+        maxTokens: 2048,
+        responseStyle: 'balanced',
+        toolUsage: 'conservative'
+      },
+      notifications: {
+        enabled: true,
+        types: ['mentions', 'direct_messages'],
+        frequency: 'immediate',
+        channels: []
+      },
+      customSettings: {},
+      updatedAt: new Date()
+    };
   }
 }
 

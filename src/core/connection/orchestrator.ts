@@ -81,9 +81,44 @@ export class ConnectionOrchestrator {
    * Create Discord client with configuration
    */
   private createClient(): any {
-    // This would use the actual Discord.js client creation
-    // For now, return a mock client
-    return {} as any;
+    const { Client, GatewayIntentBits, Partials, Options } = require('discord.js');
+    
+    const clientOptions: Options = {
+      intents: this.config.intents || GatewayIntentBits.Guilds | GatewayIntentBits.GuildMessages | GatewayIntentBits.GuildMessageReactions,
+      partials: this.config.partials || [Partials.User, Partials.Channel, Partials.Message, Partials.GuildMember, Partials.Reaction],
+      presence: this.config.presence || {
+        status: 'online',
+        activities: [{
+          name: 'Monitoring',
+          type: 3, // ActivityType.Watching
+        }],
+      },
+      makeCache: this.config.cacheOptions || {
+        messageManagerMaxSize: 200,
+        sweepInterval: 3600000, // 1 hour
+      },
+      shards: this.config.shards || 'auto',
+      failIfNotPresent: true,
+      allowedMentions: {
+        parse: ['users', 'roles'],
+        repliedUser: true,
+      },
+      rest: {
+        timeout: this.config.restTimeout || 30000,
+        userAgent: 'DiscordBot (https://github.com/discordjs/discord.js)',
+      },
+    };
+    
+    // Create the Discord client
+    const client = new Client(clientOptions);
+    
+    this.logger.info('Discord.js client created with configuration', {
+      intents: clientOptions.intents,
+      partials: clientOptions.partials,
+      shards: clientOptions.shards,
+    });
+    
+    return client;
   }
 
   /**

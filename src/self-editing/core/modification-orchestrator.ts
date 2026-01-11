@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
-import { Logger } from '../../../utils/logger.js';
-import { BotError } from '../../../types.js';
+import { Logger } from '../../utils/logger.js';
+import { BotError } from '../../core/errors/bot-error.js';
 import {
   CodeModification,
   ModificationType,
@@ -10,8 +10,9 @@ import {
   TestingReport,
   RollbackPlan,
   ProgressTracker,
-  AdaptationRecommendation
-} from '../../../types/self-editing.js';
+  AdaptationRecommendation,
+  ValidationType // <-- Add this import
+} from '../../types/self-editing.js';
 
 /**
  * Orchestrates code modification operations with safety and validation
@@ -291,7 +292,7 @@ export class ModificationOrchestrator extends EventEmitter {
     modification.validation.checks = [
       {
         name: 'Syntax Check',
-        type: 'syntax',
+        type: ValidationType.SYNTAX,
         status: 'passed',
         message: 'All files have valid syntax',
         details: { filesChecked: modification.changes.length }

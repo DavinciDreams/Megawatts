@@ -996,6 +996,95 @@ export class MaintenanceRepository extends BaseRepository<any> {
   }
 
   /**
+   * Get security team members
+   * @param options - Query options
+   * @returns Array of security team members
+   */
+  async getSecurityTeamMembers(options: QueryOptions = {}): Promise<Array<{
+    id: string;
+    userId: string;
+    name: string;
+    role: string;
+    onCall: boolean;
+    contactMethod: string;
+    email?: string;
+    phone?: string;
+  }>> {
+    let query = 'SELECT * FROM security_team';
+    const params: any[] = [];
+
+    if (options.where) {
+      query += ` WHERE ${options.where}`;
+      if (options.params) {
+        params.push(...options.params);
+      }
+    }
+
+    if (options.orderBy) {
+      query += ` ORDER BY ${options.orderBy} ${options.orderDirection || 'ASC'}`;
+    }
+
+    if (options.limit) {
+      query += ` LIMIT ${options.limit}`;
+    }
+
+    if (options.offset) {
+      query += ` OFFSET ${options.offset}`;
+    }
+
+    const result = await this.db.query(query, params);
+    return result.rows.map((row: any) => ({
+      id: row.id,
+      userId: row.user_id,
+      name: row.name,
+      role: row.role,
+      onCall: row.on_call,
+      contactMethod: row.contact_method,
+      email: row.email,
+      phone: row.phone,
+    }));
+  }
+
+  /**
+   * Create performance tracking record
+   * @param tracking - Performance tracking data
+   * @returns Created performance tracking record
+   */
+  async createPerformanceTracking(tracking: {
+    taskId: string;
+    taskTitle: string;
+    taskType: string;
+    beforeMetrics: Record<string, number>;
+    afterMetrics: Record<string, number>;
+    improvements: Record<string, number>;
+    averageImprovement: number;
+    actualHours: number;
+    estimatedHours: number;
+    trackedAt: Date;
+  }): Promise<void> {
+    const result = await this.db.query(
+      `INSERT INTO performance_tracking (
+        task_id, task_title, task_type, before_metrics, after_metrics,
+        improvements, average_improvement, actual_hours, estimated_hours, tracked_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [
+        tracking.taskId,
+        tracking.taskTitle,
+        tracking.taskType,
+        JSON.stringify(tracking.beforeMetrics || {}),
+        JSON.stringify(tracking.afterMetrics || {}),
+        JSON.stringify(tracking.improvements || {}),
+        tracking.averageImprovement,
+        tracking.actualHours,
+        tracking.estimatedHours,
+        tracking.trackedAt,
+      ]
+    );
+
+    this.logger.debug(`Performance tracking created for task: ${tracking.taskId}`);
+  }
+
+  /**
    * Update maintenance schedule
    * @param id - Schedule ID
    * @param updates - Partial maintenance schedule object with updates

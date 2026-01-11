@@ -11,6 +11,7 @@
 
 import { Logger } from '../utils/logger';
 import { BotError } from '../utils/errors';
+import { register } from 'prom-client';
 
 /**
  * Alert severity levels
@@ -370,7 +371,7 @@ export class AlertManager {
   /**
    * Evaluate all alert rules
    */
-  private evaluateAlertRules(): void {
+  private async evaluateAlertRules(): Promise<void> {
     try {
       for (const [ruleId, rule] of this.alertRules) {
         if (!rule.enabled) {
@@ -386,10 +387,10 @@ export class AlertManager {
         }
 
         // Evaluate rule
-        const result = this.evaluateRule(rule);
+        const result = await this.evaluateRule(rule);
 
         if (result.triggered) {
-          this.triggerAlert(rule, result);
+          await this.triggerAlert(rule, result);
         }
       }
 
@@ -397,7 +398,7 @@ export class AlertManager {
       this.checkEscalations();
 
       // Retry failed notifications
-      this.retryFailedNotifications();
+      await this.retryFailedNotifications();
 
     } catch (error) {
       this.logger.error('Error evaluating alert rules:', error);
@@ -407,12 +408,12 @@ export class AlertManager {
   /**
    * Evaluate a single alert rule
    */
-  private evaluateRule(rule: AlertRule): { triggered: boolean; metrics: AlertMetric[] } {
+  private async evaluateRule(rule: AlertRule): Promise<{ triggered: boolean; metrics: AlertMetric[] }> {
     const metrics: AlertMetric[] = [];
     let triggered = false;
 
-    // Get metric value (in production, this would query the metrics collector)
-    const metricValue = this.getMetricValue(rule.condition.metric);
+    // Get metric value from prom-client registry
+    const metricValue = await this.getMetricValue(rule.condition.metric);
 
     if (metricValue === null) {
       this.logger.warn(`Metric not found: ${rule.condition.metric}`);
@@ -465,12 +466,36 @@ export class AlertManager {
   }
 
   /**
-   * Get metric value (placeholder - in production would query metrics collector)
+   * Get metric value from prom-client registry
    */
-  private getMetricValue(metric: string): number | null {
-    // In production, this would query the metrics collector
-    // For now, return null to indicate metric not available
-    return null;
+  private async getMetricValue(metric: string): Promise<number | null> {
+    try {
+      const promMetric = register.getSingleMetric(metric);
+      
+      if (!promMetric) {
+        this.logger.warn(`Metric not found: ${metric}`);
+        return null;
+      }
+      
+      const value = await promMetric.get();
+      
+      if (typeof value === 'object' && 'values' in value) {
+        // For histograms/summaries, return the sum
+        const metricWithValues = value as any;
+        if (metricWithValues.values && Array.isArray(metricWithValues.values)) {
+          return metricWithValues.values.reduce((sum: number, v: number) => sum + v, 0);
+        }
+      }
+      
+      if (typeof value === 'number') {
+        return value;
+      }
+      
+      return null;
+    } catch (error) {
+      this.logger.error(`Error getting metric value for ${metric}:`, error);
+      return null;
+    }
   }
 
   /**
@@ -609,9 +634,62 @@ export class AlertManager {
     if (!this.emailConfig?.enabled) {
       throw new Error('Email notifications not configured');
     }
-
+    
     this.logger.info(`Sending email notification for alert: ${alert.id}`);
-    // In production, this would send actual email
+    
+    const nodemailer = require('nodemailer');
+    const transporter = nodemailer.createTransport({
+      host: this.emailConfig.smtp.host,
+      port: this.emailConfig.smtp.port,
+      secure: this.emailConfig.smtp.secure,
+      auth: {
+        user: this.emailConfig.smtp.auth.user,
+        pass: this.emailConfig.smtp.auth.pass,
+      },
+    });
+    
+    const mailOptions = {
+      from: this.emailConfig.from,
+      to: this.emailConfig.to.join(', '),
+      subject: `[${alert.severity.toUpperCase()}] ${alert.ruleName}`,
+      text: alert.message,
+      html: this.formatAlertEmail(alert),
+    };
+    
+    await transporter.sendMail(mailOptions);
+    this.logger.info(`Email notification sent for alert: ${alert.id}`);
+  }
+  
+  /**
+   * Format alert as HTML email
+   */
+  private formatAlertEmail(alert: Alert): string {
+    const severityColors = {
+      [AlertSeverity.INFO]: '#3498db',
+      [AlertSeverity.WARNING]: '#f59e0b',
+      [AlertSeverity.ERROR]: '#dc2626',
+      [AlertSeverity.CRITICAL]: '#dc3545',
+    };
+    
+    const color = severityColors[alert.severity] || '#3498db';
+    
+    return `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background-color: ${color}; color: white; padding: 20px; border-radius: 5px;">
+          <h2 style="margin: 0 0 10px 0;">${alert.severity.toUpperCase()} Alert</h2>
+          <h3 style="margin: 0 0 10px 0;">${alert.ruleName}</h3>
+          <p style="margin: 0 0 15px 0;">${alert.message}</p>
+          <div style="background-color: rgba(255,255,255,255,0.1); padding: 10px; border-radius: 3px; margin-top: 15px;">
+            <p><strong>Timestamp:</strong> ${alert.timestamp.toISOString()}</p>
+            <p><strong>Alert ID:</strong> ${alert.id}</p>
+            ${alert.metrics.length > 0 ? `<p><strong>Metrics:</strong></p>
+              <ul>
+                ${alert.metrics.map(m => `<li>${m.name}: ${m.value} (threshold: ${m.threshold})</li>`).join('')}
+              </ul>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   /**
@@ -623,7 +701,57 @@ export class AlertManager {
     }
 
     this.logger.info(`Sending Slack notification for alert: ${alert.id}`);
-    // In production, this would send actual Slack webhook
+    
+    const { IncomingWebhook } = require('@slack/web-api');
+    const webhook = new IncomingWebhook(this.slackConfig.webhookUrl);
+    
+    const slackMessage = {
+      username: this.slackConfig.username || 'Alert Manager',
+      icon_emoji: this.slackConfig.iconEmoji || ':warning:',
+      channel: this.slackConfig.channel,
+      attachments: [
+        {
+          color: this.getSeverityColor(alert.severity),
+          title: `[${alert.severity.toUpperCase()}] ${alert.ruleName}`,
+          text: alert.message,
+          fields: [
+            {
+              title: 'Alert ID',
+              value: alert.id,
+              short: true
+            },
+            {
+              title: 'Timestamp',
+              value: alert.timestamp.toISOString(),
+              short: true
+            },
+            ...alert.metrics.map(m => ({
+              title: m.name,
+              value: `${m.value} (threshold: ${m.threshold})`,
+              short: true
+            }))
+          ],
+          footer: 'Megawatts Bot',
+          ts: Math.floor(alert.timestamp.getTime() / 1000)
+        }
+      ]
+    };
+    
+    await webhook.send(slackMessage);
+    this.logger.info(`Slack notification sent for alert: ${alert.id}`);
+  }
+
+  /**
+   * Get severity color for Slack/Discord
+   */
+  private getSeverityColor(severity: AlertSeverity): string {
+    const colors = {
+      [AlertSeverity.INFO]: '#3498db',
+      [AlertSeverity.WARNING]: '#f59e0b',
+      [AlertSeverity.ERROR]: '#dc2626',
+      [AlertSeverity.CRITICAL]: '#dc3545'
+    };
+    return colors[severity] || '#3498db';
   }
 
   /**
@@ -635,7 +763,54 @@ export class AlertManager {
     }
 
     this.logger.info(`Sending Discord notification for alert: ${alert.id}`);
-    // In production, this would send actual Discord webhook
+    
+    const discordMessage = {
+      username: 'Megawatts Alert Manager',
+      avatar_url: 'https://i.imgur.com/your-avatar.png', // Replace with actual avatar
+      embeds: [
+        {
+          title: `[${alert.severity.toUpperCase()}] ${alert.ruleName}`,
+          description: alert.message,
+          color: parseInt(this.getSeverityColor(alert.severity).replace('#', ''), 16),
+          fields: [
+            {
+              name: 'Alert ID',
+              value: alert.id,
+              inline: true
+            },
+            {
+              name: 'Timestamp',
+              value: alert.timestamp.toISOString(),
+              inline: true
+            },
+            ...alert.metrics.map(m => ({
+              name: m.name,
+              value: `${m.value} (threshold: ${m.threshold})`,
+              inline: true
+            }))
+          ],
+          footer: {
+            text: 'Megawatts Bot',
+            icon_url: 'https://i.imgur.com/footer-icon.png' // Replace with actual icon
+          },
+          timestamp: alert.timestamp.toISOString()
+        }
+      ]
+    };
+    
+    const response = await fetch(this.discordConfig.webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(discordMessage)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Discord webhook failed: ${response.status}`);
+    }
+    
+    this.logger.info(`Discord notification sent for alert: ${alert.id}`);
   }
 
   /**
@@ -647,7 +822,51 @@ export class AlertManager {
     }
 
     this.logger.info(`Sending PagerDuty notification for alert: ${alert.id}`);
-    // In production, this would send actual PagerDuty event
+    
+    const pagerDutyEvent = {
+      routing_key: this.pagerDutyConfig.integrationKey,
+      event_action: 'trigger',
+      dedup_key: alert.id,
+      payload: {
+        summary: `[${alert.severity.toUpperCase()}] ${alert.ruleName}`,
+        severity: this.mapSeverityToPagerDuty(alert.severity),
+        source: 'Megawatts Bot',
+        timestamp: alert.timestamp.toISOString(),
+        custom_details: {
+          alertId: alert.id,
+          message: alert.message,
+          metrics: alert.metrics
+        }
+      }
+    };
+    
+    const response = await fetch('https://events.pagerduty.com/v2/enqueue', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(pagerDutyEvent)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`PagerDuty API failed: ${response.status}`);
+    }
+    
+    this.logger.info(`PagerDuty notification sent for alert: ${alert.id}`);
+  }
+
+  /**
+   * Map alert severity to PagerDuty severity
+   */
+  private mapSeverityToPagerDuty(severity: AlertSeverity): string {
+    const mapping = {
+      [AlertSeverity.INFO]: 'info',
+      [AlertSeverity.WARNING]: 'warning',
+      [AlertSeverity.ERROR]: 'error',
+      [AlertSeverity.CRITICAL]: 'critical'
+    };
+    return mapping[severity] || 'info';
   }
 
   /**
@@ -660,7 +879,32 @@ export class AlertManager {
     }
 
     this.logger.info(`Sending webhook notification for alert: ${alert.id}`);
-    // In production, this would send actual webhook
+    
+    const webhookPayload = {
+      alertId: alert.id,
+      ruleName: alert.ruleName,
+      severity: alert.severity,
+      status: alert.status,
+      timestamp: alert.timestamp.toISOString(),
+      message: alert.message,
+      metrics: alert.metrics,
+      details: alert.details
+    };
+    
+    const response = await fetch(webhookConfig.url, {
+      method: webhookConfig.method || 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...webhookConfig.headers
+      },
+      body: JSON.stringify(webhookPayload)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Webhook failed: ${response.status}`);
+    }
+    
+    this.logger.info(`Webhook notification sent for alert: ${alert.id}`);
   }
 
   /**

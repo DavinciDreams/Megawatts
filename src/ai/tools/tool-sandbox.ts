@@ -7,6 +7,7 @@
 
 import { ToolCall, Tool } from '../../types/ai';
 import { ExecutionContext } from './tool-executor';
+import { ToolRegistry } from './tool-registry';
 import { Logger } from '../../utils/logger';
 import { BotError } from '../../utils/errors';
 
@@ -113,10 +114,12 @@ export class ToolSandbox {
   private networkIsolation: NetworkIsolation;
   private apiRestrictions: ApiRestrictions;
   private permissionManager: PermissionManager;
+  private toolRegistry: ToolRegistry | null = null;
 
-  constructor(config: SandboxConfig, logger: Logger) {
+  constructor(config: SandboxConfig, logger: Logger, toolRegistry?: ToolRegistry) {
     this.logger = logger;
     this.config = config;
+    this.toolRegistry = toolRegistry || null;
 
     this.fileSystemIsolation = new FileSystemIsolation({
       allowedPaths: config.allowedPaths || [],
@@ -264,20 +267,55 @@ export class ToolSandbox {
     sandboxContext: SandboxContext,
     startTime: number
   ): Promise<SandboxResult> {
-    // This would delegate to the actual tool executor
-    // For now, return a placeholder result
-    return {
-      success: true,
-      result: {
+    this.logger.info('Executing tool directly (sandbox disabled)', {
+      tool: toolCall.name,
+      userId: context.userId
+    });
+
+    try {
+      // Get the tool from the tool registry
+      const tool = this.toolRegistry?.getTool(toolCall.name);
+      
+      if (!tool) {
+        throw new BotError(
+          `Tool '${toolCall.name}' not found in registry`,
+          'medium',
+          { tool: toolCall.name }
+        );
+      }
+
+      // Execute the tool with its arguments
+      const result = await tool.execute(toolCall.arguments, context);
+
+      const executionTime = Date.now() - startTime;
+
+      this.logger.info('Tool executed successfully', {
         tool: toolCall.name,
-        arguments: toolCall.arguments,
-        executed: true,
-        timestamp: new Date()
-      },
-      violations: [],
-      executionTime: Date.now() - startTime,
-      sandboxContext
-    };
+        executionTime
+      });
+
+      return {
+        success: true,
+        result,
+        violations: [],
+        executionTime,
+        sandboxContext
+      };
+    } catch (error) {
+      const executionTime = Date.now() - startTime;
+
+      this.logger.error('Tool execution failed', error as Error, {
+        tool: toolCall.name
+      });
+
+      return {
+        success: false,
+        error: error as Error,
+        violations: [],
+        executionTime,
+        sandboxContext
+      };
+    }
   }
 
   /**

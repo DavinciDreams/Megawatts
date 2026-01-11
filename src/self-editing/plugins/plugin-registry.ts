@@ -1,6 +1,8 @@
 import { Logger } from '../../utils/logger';
 import { PluginError, ValidationError } from '../../utils/errors';
 import { PluginManifest } from './plugin-loader';
+import pacote from 'pacote';
+import fetch from 'node-fetch';
 
 /**
  * Plugin registry entry

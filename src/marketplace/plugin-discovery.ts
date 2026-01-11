@@ -445,15 +445,39 @@ export class PluginDiscovery {
     return downloadScore + installScore + viewScore + ratingScore;
   }
 
-  /**
-   * Calculate trend change percentage
-   */
-  private calculateTrendChange(plugin: MarketplacePlugin, period: 'day' | 'week' | 'month'): number {
-    // In a real implementation, this would compare current downloads
-    // with downloads from the previous period
-    // For now, return a placeholder value
-    return 0;
-  }
+ /**
+  * Calculate trend change percentage
+  */
+ private calculateTrendChange(plugin: MarketplacePlugin, period: 'day' | 'week' | 'month'): number {
+   try {
+     const currentDownloads = plugin.statistics.downloads || 0;
+     const previousDownloads = plugin.statistics.previousDownloads || 0;
+     
+     if (previousDownloads === 0) {
+       // No previous data, can't calculate trend
+       this.logger.debug('Cannot calculate trend change: no previous downloads data', { pluginId: plugin.id });
+       return 0;
+     }
+     
+     const change = currentDownloads - previousDownloads;
+     const changePercentage = previousDownloads > 0
+       ? (change / previousDownloads) * 100
+       : 0;
+     
+     this.logger.debug('Calculated trend change', {
+       pluginId: plugin.id,
+       currentDownloads,
+       previousDownloads,
+       change,
+       changePercentage
+     });
+     
+     return changePercentage;
+   } catch (error) {
+     this.logger.error('Failed to calculate trend change', error as Error, { pluginId: plugin.id });
+     return 0;
+   }
+ }
 
   /**
    * Calculate similarity score between two plugins

@@ -452,10 +452,23 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
    * Setup event handlers for Discord client
    */
   private setupEventHandlers(): void {
-    // Handle client ready
-    this.client.once('clientReady', () => {
-      this.logger.info('Discord client ready, integration active');
-    });
+    // Check if client is already ready
+    if (this.client.isReady()) {
+      this.logger.info('Discord client already ready, setting client on tool executor immediately');
+      if (this.conversationHandler) {
+        this.conversationHandler.setDiscordClient(this.client);
+        this.logger.info('Discord client set on conversation handler tool executor');
+      }
+    } else {
+      // Register ready event listener for when client connects
+      this.client.on('ready', () => {
+        this.logger.info('Discord client ready, integration active');
+        if (this.conversationHandler) {
+          this.conversationHandler.setDiscordClient(this.client);
+          this.logger.info('Discord client set on conversation handler tool executor');
+        }
+      });
+    }
     
     // Handle disconnection
     this.client.on('disconnect', () => {

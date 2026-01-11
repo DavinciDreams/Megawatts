@@ -270,7 +270,10 @@ class SelfEditingDiscordBot {
         intents: [
           GatewayIntentBits.Guilds,
           GatewayIntentBits.GuildMessages,
-          GatewayIntentBits.MessageContent
+          GatewayIntentBits.MessageContent,
+          GatewayIntentBits.GuildMembers,
+          GatewayIntentBits.GuildMessageReactions,
+          GatewayIntentBits.GuildPresences
         ],
         presence: {
           status: 'online',
@@ -278,17 +281,10 @@ class SelfEditingDiscordBot {
         },
       });
 
-      this.client.on('clientReady', () => {
+      this.client.on('ready', () => {
         this.logger.info('Bot client is ready and online!');
         this.isReady = true;
         // Update health manager with Discord client status
-        this.updateDiscordHealthStatus(true);
-      });
-
-      // Backward compatibility for deprecated ready event
-      this.client.on('ready', () => {
-        this.logger.warn('Using deprecated ready event. Please migrate to clientReady event.');
-        this.isReady = true;
         this.updateDiscordHealthStatus(true);
       });
 

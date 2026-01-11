@@ -232,6 +232,7 @@ export interface PluginStatistics {
   installs: number;
   activeInstalls: number;
   views: number;
+  previousDownloads?: number; // Downloads from previous period for trend calculation
   forks?: number;
   stars?: number;
   lastUpdated?: Date;

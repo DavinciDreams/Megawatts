@@ -12,8 +12,8 @@ import {
   SentimentTemporal,
   ConversationContext,
   UserPreferences
-} from '../../../types/ai';
-import { Logger } from '../../../utils/logger';
+} from '../../types/ai';
+import { Logger } from '../../utils/logger';
 
 // ============================================================================
 // SENTIMENT ANALYZER CLASS
