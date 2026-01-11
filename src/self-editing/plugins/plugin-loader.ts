@@ -1,6 +1,7 @@
 import { Logger } from '../../utils/logger';
 import { PluginError, ValidationError } from '../../utils/errors';
 import * as fs from 'fs/promises';
+import * as nodefs from 'fs';
 import * as path from 'path';
 import { createRequire } from 'module';
 
@@ -104,7 +105,7 @@ export class PluginLoader {
   private loadedPlugins: Map<string, LoadedPlugin> = new Map();
   private loadingStrategies: Map<string, LoadingStrategy> = new Map();
   private hotReloadConfig: HotReloadConfig;
-  private hotReloadWatchers: Map<string, fs.FSWatcher> = new Map();
+  private hotReloadWatchers: Map<string, nodefs.FSWatcher> = new Map();
   private pluginDirectory: string;
 
   constructor(logger: Logger, pluginDirectory: string = './plugins', hotReloadConfig?: Partial<HotReloadConfig>) {
@@ -169,14 +170,14 @@ export class PluginLoader {
           this.logger.debug(`Discovered plugin: ${manifest.id} v${manifest.version}`);
         } catch (error) {
           failed.push({ path: pluginPath, error: error instanceof Error ? error.message : String(error) });
-          this.logger.warn(`Failed to discover plugin at ${pluginPath}:`, error);
+          this.logger.warn(`Failed to discover plugin at ${pluginPath}:`, error as Error);
         }
       }
 
       this.logger.info(`Discovered ${discovered.length} plugins, ${failed.length} failed`);
       return { discovered, failed };
     } catch (error) {
-      this.logger.error(`Plugin discovery failed for ${targetPath}:`, error);
+      this.logger.error(`Plugin discovery failed for ${targetPath}:`, error as Error);
       throw new PluginError('Plugin discovery failed', 'DISCOVERY_ERROR', { path: targetPath });
     }
   }
@@ -208,6 +209,10 @@ export class PluginLoader {
         return { success: false, error: loadResult.error };
       }
 
+      if (!loadResult.manifest) {
+        return { success: false, error: 'Plugin manifest is missing from load result.' };
+      }
+
       // Validate plugin
       const validation = await this.validatePlugin(loadResult.manifest, loadResult.code);
       if (!validation.valid) {
@@ -221,7 +226,7 @@ export class PluginLoader {
       }
 
       // Load module
-      const module = await this.loadModule(loadResult.manifest, loadResult.code);
+      const module = await this.loadModule(loadResult.manifest, loadResult.code ?? '');
 
       const loadedPlugin: LoadedPlugin = {
         manifest: loadResult.manifest,
@@ -236,7 +241,7 @@ export class PluginLoader {
       this.logger.info(`Plugin loaded successfully: ${loadResult.manifest.id} v${loadResult.manifest.version}`);
       return { success: true, plugin: loadedPlugin };
     } catch (error) {
-      this.logger.error(`Plugin loading failed from ${type} ${source}:`, error);
+      this.logger.error(`Plugin loading failed from ${type} ${source}:`, error as Error);
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
@@ -285,7 +290,7 @@ export class PluginLoader {
       this.logger.debug(`Plugin validation completed for ${manifest.id}: ${valid ? 'valid' : 'invalid'}`);
       return { valid, errors, warnings, securityIssues };
     } catch (error) {
-      this.logger.error(`Plugin validation failed for ${manifest.id}:`, error);
+      this.logger.error(`Plugin validation failed for ${manifest.id}:`, error as Error);
       throw error;
     }
   }
@@ -349,6 +354,7 @@ export class PluginLoader {
       const sorted = this.topologicalSort(dependencyGraph);
       resolutionOrder.push(...sorted);
     } catch (error) {
+      this.logger.error(`Dependency resolution failed for ${manifest.id}:`, error as Error);
       return {
         resolved: false,
         missing,
@@ -412,7 +418,7 @@ export class PluginLoader {
 
     try {
       // Watch for file changes
-      const watcher = fs.watch(plugin.path, { recursive: true }, async (eventType, filename) => {
+      const watcher = nodefs.watch(plugin.path, { recursive: true }, async (eventType, filename) => {
         if (filename && this.hotReloadConfig.reloadOnFileChange) {
           this.logger.debug(`File changed for plugin ${pluginId}: ${filename}`);
 
@@ -422,7 +428,7 @@ export class PluginLoader {
               await this.reloadPlugin(pluginId);
               this.logger.info(`Hot reload successful for plugin: ${pluginId}`);
             } catch (error) {
-              this.logger.error(`Hot reload failed for plugin ${pluginId}:`, error);
+              this.logger.error(`Hot reload failed for plugin ${pluginId}:`, error as Error);
             }
           }, this.hotReloadConfig.debounceMs);
         }
@@ -431,7 +437,7 @@ export class PluginLoader {
       this.hotReloadWatchers.set(pluginId, watcher);
       this.logger.info(`Hot reload enabled for plugin: ${pluginId}`);
     } catch (error) {
-      this.logger.error(`Failed to enable hot reload for ${pluginId}:`, error);
+      this.logger.error(`Failed to enable hot reload for ${pluginId}:`, error as Error);
       throw new PluginError(`Failed to enable hot reload: ${error}`, 'HOT_RELOAD_ERROR');
     }
   }
@@ -490,7 +496,7 @@ export class PluginLoader {
       try {
         await plugin.module.cleanup();
       } catch (error) {
-        this.logger.warn(`Plugin cleanup failed for ${pluginId}:`, error);
+        this.logger.warn(`Plugin cleanup failed for ${pluginId}:`, error as Error);
       }
     }
 
@@ -773,7 +779,7 @@ export class PluginLoader {
 
       return module;
     } catch (error) {
-      this.logger.error(`Failed to load module for ${manifest.id}:`, error);
+      this.logger.error(`Failed to load module for ${manifest.id}:`, error as Error);
       throw new PluginError(`Module load failed: ${error}`, 'MODULE_LOAD_ERROR');
     }
   }

@@ -1,5 +1,5 @@
 import { Logger } from '../../utils/logger';
-import { BotError } from '../../../types';
+import { BotError } from '../../core/errors';
 
 /**
  * Validation for code modifications
@@ -54,7 +54,7 @@ export class ModificationValidator {
       this.logger.debug(`Modification validation completed: ${valid ? 'valid' : 'invalid'}`);
       return { valid, errors, warnings };
     } catch (error) {
-      this.logger.error('Modification validation failed:', error);
+      this.logger.error('Modification validation failed:', error as Error);
       throw new BotError(`Modification validation failed: ${error}`, 'medium');
     }
   }

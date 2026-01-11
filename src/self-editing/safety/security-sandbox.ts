@@ -1,5 +1,5 @@
 import { Logger } from '../../utils/logger';
-import { BotError } from '../../../types';
+import { BotError } from '../../core/errors';
 
 /**
  * Security sandbox for isolated code execution
@@ -45,11 +45,11 @@ export class SecuritySandbox {
       this.logger.debug(`Sandbox created successfully: ${sandboxId}`);
       return { sandboxId, status: 'created' };
     } catch (error) {
-      this.logger.error(`Sandbox creation failed for ${sandboxId}:`, error);
+      this.logger.error(`Sandbox creation failed for ${sandboxId}:`, error as Error);
       return { 
         sandboxId, 
         status: 'failed', 
-        error: error.toString() 
+        error: error instanceof Error ? error.message : String(error)
       };
     }
   }
@@ -89,10 +89,10 @@ export class SecuritySandbox {
         executionTime
       };
     } catch (error) {
-      this.logger.error(`Code execution failed in sandbox ${sandboxId}:`, error);
+      this.logger.error(`Code execution failed in sandbox ${sandboxId}:`, error as Error);
       return {
         success: false,
-        error: error.toString(),
+        error: error instanceof Error ? error.message : String(error),
         executionTime: 0
       };
     }
@@ -119,8 +119,8 @@ export class SecuritySandbox {
       this.logger.debug(`Sandbox destroyed successfully: ${sandboxId}`);
       return { success: true };
     } catch (error) {
-      this.logger.error(`Sandbox destruction failed for ${sandboxId}:`, error);
-      return { success: false, error: error.toString() };
+      this.logger.error(`Sandbox destruction failed for ${sandboxId}:`, error as Error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 

@@ -961,7 +961,7 @@ class WeaviateProvider extends VectorDatabaseProviderImpl {
         clientConfig.apiKey = new weaviate.ApiKey(apiKey);
       }
 
-      this.client = weaviate.default.client(clientConfig);
+      this.client = weaviate.client(clientConfig);
 
       // Test connection by checking if we can access schema
       await this.client.schema.getter().do();
@@ -1615,7 +1615,7 @@ class ChromaProvider extends VectorDatabaseProviderImpl {
       return {
         id: results.ids[0],
         vector: results.embeddings?.[0] || [],
-        metadata: results.metadatas?.[0],
+        metadata: results.metadatas?.[0] ?? undefined,
       };
     } catch (error) {
       throw new VectorDatabaseError(

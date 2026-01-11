@@ -176,25 +176,3 @@ export function createTieredStorageSystem(
   };
 }
 
-/**
- * Re-exports for convenience
- */
-export type {
-  TieredStorageConfig,
-  DataMetadata,
-  MigrationResult,
-  StorageStatistics
-} from './tieredStorage';
-
-export type {
-  AccessPattern,
-  CostOptimization,
-  LifecycleStatistics
-} from './dataLifecycle';
-
-export type {
-  RetentionPolicy,
-  PolicyViolation,
-  PolicyEnforcementReport,
-  PolicySummary
-} from './retentionPolicy';

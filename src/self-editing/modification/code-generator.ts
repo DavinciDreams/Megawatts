@@ -1,6 +1,5 @@
 import { Logger } from '../../utils/logger';
-import { BotError } from '../../../types';
-import { ModificationChange, CodeLocation } from '../../../types/self-editing';
+import { BotError } from '../../core/errors';
 
 /**
  * Code generation for automated improvements
@@ -34,7 +33,7 @@ export class CodeGenerator {
       this.logger.debug(`Code generation completed for ${target}`);
       return optimizedCode;
     } catch (error) {
-      this.logger.error(`Code generation failed for ${target}:`, error);
+      this.logger.error(`Code generation failed for ${target}:`, error as Error);
       throw new BotError(`Code generation failed: ${error}`, 'medium');
     }
   }
@@ -63,7 +62,7 @@ describe('${target}', () => {
 ${testCases.map((testCase, index) => `
   it('${testCase.description}', async () => {
     const input = ${JSON.stringify(testCase.input)};
-    const result = await ${target}(${testCase.input});
+    const result = await ${target}(${JSON.stringify(testCase.input)});
     
     expect(result).to.deep.equal(${JSON.stringify(testCase.expectedOutput)});
   });
@@ -82,7 +81,7 @@ ${testCases.map((testCase, index) => `
       this.logger.debug(`Test code generation completed for ${target}`);
       return testCode;
     } catch (error) {
-      this.logger.error(`Test code generation failed for ${target}:`, error);
+      this.logger.error(`Test code generation failed for ${target}:`, error as Error);
       throw new BotError(`Test code generation failed: ${error}`, 'medium');
     }
   }
@@ -112,51 +111,47 @@ ${testCases.map((testCase, index) => `
     try {
       this.logger.debug(`Generating documentation for ${target}`);
       
-      // Mock documentation generation
-      const documentation = `
-# ${target} Module Documentation
-
-## Overview
-${functions.map(func => `
-### ${func.name}
-
-${func.description}
-
-**Parameters:**
-${func.params.map(param => 
-  \`${param.name}\` (${param.type}${param.optional ? ', optional' : ''}): ${param.description}
-`).join('\n')}
-
-**Returns:** \`${func.returnType}\`
-
-**Example:**
-${func.examples.map(example => 
-  \`\`\`\`typescript
-  // ${example.input}
-  \`\`\` => ${JSON.stringify(example.output)}
-  \`\`\` // ${example.description}
-`).join('\n')}
-`).join('\n')}
-
----
-
-## Usage
-
-\`\`\`typescript
-import { ${functions.map(f => f.name).join(', ')} from './${target}';
-
-// Example usage
-${functions.map(func => func.examples.map(example => 
-  const result = await ${func.name}(${example.input});
-  console.log(result);
-`).join('\n')).join('\n')}
-\`\`\`
-`;
+      // Build documentation string using helper methods to avoid escaping issues
+      let documentation = `# ${target} Module Documentation\n\n`;
+      documentation += `## Overview\n\n`;
+      
+      for (const func of functions) {
+        documentation += `### ${func.name}\n\n`;
+        documentation += `${func.description}\n\n`;
+        documentation += `**Parameters:**\n`;
+        for (const param of func.params) {
+          documentation += `- \`${param.name}\` (${param.type}${param.optional ? ', optional' : ''}): ${param.description}\n`;
+        }
+        documentation += `\n**Returns:** \`${func.returnType}\`\n\n`;
+        documentation += `**Example:**\n`;
+        for (const example of func.examples) {
+          documentation += `\`\`\`typescript\n`;
+          documentation += `// ${JSON.stringify(example.input)}\n`;
+          documentation += `\`\`\` => ${JSON.stringify(example.output)}\n`;
+          documentation += `\`\`\` // ${example.description}\n`;
+        }
+        documentation += `\n`;
+      }
+      
+      documentation += `---\n\n`;
+      documentation += `## Usage\n\n`;
+      documentation += `\`\`\`typescript\n`;
+      documentation += `import { ${functions.map(f => f.name).join(', ')} } from './${target}';\n`;
+      documentation += `\`\`\`\n\n`;
+      documentation += `// Example usage\n`;
+      documentation += `\`\`\`typescript\n`;
+      for (const func of functions) {
+        for (const example of func.examples) {
+          documentation += `const result = await ${func.name}(${JSON.stringify(example.input)});\n`;
+          documentation += `console.log(result);\n`;
+        }
+      }
+      documentation += `\`\`\`\n`;
 
       this.logger.debug(`Documentation generation completed for ${target}`);
       return documentation;
     } catch (error) {
-      this.logger.error(`Documentation generation failed for ${target}:`, error);
+      this.logger.error(`Documentation generation failed for ${target}:`, error as Error);
       throw new BotError(`Documentation generation failed: ${error}`, 'medium');
     }
   }
@@ -208,7 +203,7 @@ function ${target}() {
    */
   private async reduceMemoryUsage(code: string): Promise<string> {
     // Mock memory optimization
-    return code.replace(/new\s+Array\s*\([^)]+)\s*\)/g, 'const $1 = []; // Reuse array reference');
+    return code.replace(/new\s+Array\s*\([^)]+\)\s*\)/g, 'const $1 = []; // Reuse array reference');
   }
 
   /**
@@ -223,14 +218,18 @@ function ${target}() {
    * Improve readability
    */
   private async improveReadability(code: string): Promise<string> {
-    // Mock readability improvement
-    return code.replace(/\/\//g, ' // Add comments for complex logic');
-  }
-
-  /**
-   * Generate unique ID
-   */
-  private generateId(): string {
-    return `gen_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    // Mock readability improvement - add blank lines between logical sections
+    // and ensure consistent indentation
+    let improvedCode = code
+      // Add blank line before function definitions
+      .replace(/(\nfunction\s+)/g, '\n\n$1')
+      // Add blank line before class methods
+      .replace(/(\n  \w+\s*\([^)]*\)\s*:\s*\w+\s*{)/g, '\n\n$1')
+      // Ensure consistent 2-space indentation
+      .replace(/^(\s*)/gm, (match, spaces) => '  '.repeat(Math.floor(spaces.length / 2)))
+      // Add blank line before return statements
+      .replace(/(\n  return\s+)/g, '\n  $1');
+    
+    return improvedCode;
   }
 }

@@ -49,11 +49,11 @@ export class RecoveryManager {
       this.logger.debug(`Backup created successfully: ${backupId}`);
       return { backupId, success: true };
     } catch (error) {
-      this.logger.error(`Backup creation failed for ${modificationId}:`, error);
+      this.logger.error(`Backup creation failed for ${modificationId}:`, error as Error);
       return { 
         backupId: '', 
         success: false, 
-        error: error.toString() 
+        error: error instanceof Error ? error.message : String(error)
       };
     }
   }
@@ -102,7 +102,7 @@ export class RecoveryManager {
         return { success: false, error: 'Rollback operation failed', duration };
       }
     } catch (error) {
-      this.logger.error(`Rollback failed for ${modificationId}:`, error);
+      this.logger.error(`Rollback failed for ${modificationId}:`, error as Error);
       const duration = Date.now() - startTime;
       
       this.rollbackHistory.push({
@@ -110,11 +110,11 @@ export class RecoveryManager {
         timestamp: new Date(),
         modificationId,
         success: false,
-        reason: error.toString(),
+        reason: error instanceof Error ? error.message : String(error),
         duration
       });
       
-      return { success: false, error: error.toString(), duration };
+      return { success: false, error: error instanceof Error ? error.message : String(error), duration };
     }
   }
 
@@ -145,7 +145,7 @@ export class RecoveryManager {
       // In real implementation, this would restore the code from backup
       return Math.random() > 0.1; // 90% success rate for demo
     } catch (error) {
-      this.logger.error('Rollback execution failed:', error);
+      this.logger.error('Rollback execution failed:', error as Error);
       return false;
     }
   }
@@ -232,8 +232,8 @@ export class RecoveryManager {
       this.logger.debug(`Cleanup completed: ${cleaned} backups removed`);
       return { cleaned, errors };
     } catch (error) {
-      this.logger.error('Backup cleanup failed:', error);
-      return { cleaned: 0, errors: [error.toString()] };
+      this.logger.error('Backup cleanup failed:', error as Error);
+      return { cleaned: 0, errors: [error instanceof Error ? error.message : String(error)] };
     }
   }
 }

@@ -1,9 +1,105 @@
-import { Logger } from '../../../utils/logger';
-import { BotError } from '../../../types';
+import { Logger } from '../../utils/logger';
+import { BotError } from '../../utils/errors';
 
 /**
  * Performance analysis for code optimization
  */
+
+// Constants for performance scoring
+const PERFORMANCE_SCORE_CONSTANTS = {
+  MAX_SCORE: 100,
+  MIN_SCORE: 0,
+  HIGH_IMPACT_PENALTY: 20,
+  MEDIUM_IMPACT_PENALTY: 10,
+  LOW_IMPACT_PENALTY: 5,
+  MAX_OPTIMIZATION_BONUS: 15,
+  HIGH_PRIORITY_THRESHOLD: 30,
+  MEDIUM_PRIORITY_THRESHOLD: 15,
+} as const;
+
+/**
+ * Bottleneck severity levels
+ */
+type BottleneckSeverity = 'low' | 'medium' | 'high';
+
+/**
+ * Optimization priority levels
+ */
+type OptimizationPriority = 'low' | 'medium' | 'high';
+
+/**
+ * Bottleneck analysis result
+ */
+interface Bottleneck {
+  type: string;
+  location: string;
+  impact: BottleneckSeverity;
+  description: string;
+  suggestion: string;
+}
+
+/**
+ * Optimization opportunity result
+ */
+interface OptimizationOpportunity {
+  type: string;
+  location: string;
+  expectedImprovement: number;
+  description: string;
+  implementation: string;
+}
+
+/**
+ * Performance analysis result
+ */
+interface PerformanceAnalysis {
+  timeComplexity: string;
+  spaceComplexity: string;
+  bottlenecks: Bottleneck[];
+  optimizationOpportunities: OptimizationOpportunity[];
+}
+
+/**
+ * Performance report bottleneck
+ */
+interface ReportBottleneck {
+  type: string;
+  severity: BottleneckSeverity;
+  description: string;
+  recommendation: string;
+}
+
+/**
+ * Performance report optimization
+ */
+interface ReportOptimization {
+  type: string;
+  priority: OptimizationPriority;
+  description: string;
+  implementation: string;
+  expectedImpact: number;
+}
+
+/**
+ * Performance report summary
+ */
+interface ReportSummary {
+  overallScore: number;
+  timeComplexity: string;
+  spaceComplexity: string;
+  bottlenecksCount: number;
+  optimizationsCount: number;
+}
+
+/**
+ * Complete performance report
+ */
+interface PerformanceReport {
+  summary: ReportSummary;
+  bottlenecks: ReportBottleneck[];
+  optimizations: ReportOptimization[];
+}
+
 export class PerformanceAnalyzer {
   private logger: Logger;
 
@@ -204,76 +300,170 @@ export class PerformanceAnalyzer {
   }
 
   /**
-   * Generate performance report
+   * Generate performance report from analysis results
+   *
+   * @param analysis - The performance analysis result to convert into a report
+   * @returns A structured performance report with summary, bottlenecks, and optimizations
+   * @throws {BotError} If the analysis is invalid or report generation fails
    */
-  public generatePerformanceReport(analysis: any): {
-    summary: {
-      overallScore: number;
-      timeComplexity: string;
-      spaceComplexity: string;
-      bottlenecksCount: number;
-      optimizationsCount: number;
-    };
-    bottlenecks: Array<{
-      type: string;
-      severity: string;
-      description: string;
-      recommendation: string;
-    }>;
-    optimizations: Array<{
-      type: string;
-      priority: 'low' | 'medium' | 'high';
-      description: string;
-      implementation: string;
-      expectedImpact: number;
-    }>;
-  }> {
-    // Mock performance report generation
+  public generatePerformanceReport(analysis: PerformanceAnalysis): PerformanceReport {
+    try {
+      this.validateAnalysis(analysis);
+      
+      const bottlenecks = this.transformBottlenecks(analysis.bottlenecks);
+      const optimizations = this.transformOptimizations(analysis.optimizationOpportunities);
+      const summary = this.generateSummary(analysis, bottlenecks, optimizations);
+
+      this.logger.debug('Performance report generated successfully');
+
+      return {
+        summary,
+        bottlenecks,
+        optimizations
+      };
+    } catch (error) {
+      this.logger.error('Failed to generate performance report:', error);
+      throw new BotError(`Performance report generation failed: ${error}`, 'medium');
+    }
+  }
+
+  /**
+   * Validate the analysis input
+   *
+   * @param analysis - The analysis to validate
+   * @throws {Error} If the analysis is invalid
+   */
+  private validateAnalysis(analysis: PerformanceAnalysis): void {
+    if (!analysis) {
+      throw new Error('Analysis cannot be null or undefined');
+    }
+
+    if (!analysis.timeComplexity || typeof analysis.timeComplexity !== 'string') {
+      throw new Error('Invalid time complexity in analysis');
+    }
+
+    if (!analysis.spaceComplexity || typeof analysis.spaceComplexity !== 'string') {
+      throw new Error('Invalid space complexity in analysis');
+    }
+
+    if (!Array.isArray(analysis.bottlenecks)) {
+      throw new Error('Bottlenecks must be an array');
+    }
+
+    if (!Array.isArray(analysis.optimizationOpportunities)) {
+      throw new Error('Optimization opportunities must be an array');
+    }
+  }
+
+  /**
+   * Transform bottlenecks from analysis format to report format
+   *
+   * @param bottlenecks - Array of bottlenecks from analysis
+   * @returns Array of report-ready bottlenecks
+   */
+  private transformBottlenecks(bottlenecks: Bottleneck[]): ReportBottleneck[] {
+    return bottlenecks.map((bottleneck): ReportBottleneck => ({
+      type: bottleneck.type,
+      severity: bottleneck.impact,
+      description: bottleneck.description,
+      recommendation: bottleneck.suggestion
+    }));
+  }
+
+  /**
+   * Transform optimization opportunities from analysis format to report format
+   *
+   * @param optimizations - Array of optimization opportunities from analysis
+   * @returns Array of report-ready optimizations
+   */
+  private transformOptimizations(optimizations: OptimizationOpportunity[]): ReportOptimization[] {
+    return optimizations.map((optimization): ReportOptimization => ({
+      type: optimization.type,
+      priority: this.getOptimizationPriority(optimization.expectedImprovement),
+      description: optimization.description,
+      implementation: optimization.implementation,
+      expectedImpact: optimization.expectedImprovement
+    }));
+  }
+
+  /**
+   * Generate the report summary
+   *
+   * @param analysis - The performance analysis
+   * @param bottlenecks - Transformed bottlenecks
+   * @param optimizations - Transformed optimizations
+   * @returns The report summary
+   */
+  private generateSummary(
+    analysis: PerformanceAnalysis,
+    bottlenecks: ReportBottleneck[],
+    optimizations: ReportOptimization[]
+  ): ReportSummary {
     return {
-      summary: {
-        overallScore: this.calculatePerformanceScore(analysis),
-        timeComplexity: analysis.timeComplexity,
-        spaceComplexity: analysis.spaceComplexity,
-        bottlenecksCount: analysis.bottlenecks.length,
-        optimizationsCount: analysis.optimizationOpportunities.length
-      },
-      bottlenecks: analysis.bottlenecks.map(b => ({
-        type: b.type,
-        severity: b.impact,
-        description: b.description,
-        recommendation: b.suggestion
-      })),
-      optimizations: analysis.optimizationOpportunities.map(o => ({
-        type: o.type,
-        priority: this.getOptimizationPriority(o.expectedImprovement),
-        description: o.description,
-        implementation: o.implementation,
-        expectedImpact: o.expectedImprovement
-      }))
+      overallScore: this.calculatePerformanceScore(analysis),
+      timeComplexity: analysis.timeComplexity,
+      spaceComplexity: analysis.spaceComplexity,
+      bottlenecksCount: bottlenecks.length,
+      optimizationsCount: optimizations.length
     };
   }
 
-  private calculatePerformanceScore(analysis: any): number {
-    let score = 100;
+  /**
+   * Calculate the overall performance score based on bottlenecks and optimizations
+   *
+   * @param analysis - The performance analysis
+   * @returns A score between 0 and 100
+   */
+  private calculatePerformanceScore(analysis: PerformanceAnalysis): number {
+    let score = PERFORMANCE_SCORE_CONSTANTS.MAX_SCORE;
 
     // Deduct points for bottlenecks
-    analysis.bottlenecks.forEach((b: any) => {
-      if (b.impact === 'high') score -= 20;
-      else if (b.impact === 'medium') score -= 10;
-      else if (b.impact === 'low') score -= 5;
+    analysis.bottlenecks.forEach((bottleneck) => {
+      switch (bottleneck.impact) {
+        case 'high':
+          score -= PERFORMANCE_SCORE_CONSTANTS.HIGH_IMPACT_PENALTY;
+          break;
+        case 'medium':
+          score -= PERFORMANCE_SCORE_CONSTANTS.MEDIUM_IMPACT_PENALTY;
+          break;
+        case 'low':
+          score -= PERFORMANCE_SCORE_CONSTANTS.LOW_IMPACT_PENALTY;
+          break;
+        default:
+          // Unknown impact level - ignore
+          break;
+      }
     });
 
-    // Add points for optimizations
-    analysis.optimizationOpportunities.forEach((o: any) => {
-      score += Math.min(15, o.expectedImprovement / 2);
+    // Add bonus points for optimization opportunities
+    analysis.optimizationOpportunities.forEach((optimization) => {
+      const bonus = Math.min(
+        PERFORMANCE_SCORE_CONSTANTS.MAX_OPTIMIZATION_BONUS,
+        optimization.expectedImprovement / 2
+      );
+      score += bonus;
     });
 
-    return Math.max(0, Math.min(100, score));
+    // Clamp score to valid range
+    return Math.max(
+      PERFORMANCE_SCORE_CONSTANTS.MIN_SCORE,
+      Math.min(PERFORMANCE_SCORE_CONSTANTS.MAX_SCORE, score)
+    );
   }
 
-  private getOptizationPriority(improvement: number): 'low' | 'medium' | 'high' {
-    if (improvement >= 30) return 'high';
-    if (improvement >= 15) return 'medium';
+  /**
+   * Determine the priority level for an optimization based on expected improvement
+   *
+   * @param improvement - The expected improvement percentage
+   * @returns The priority level (high, medium, or low)
+   */
+  private getOptimizationPriority(improvement: number): OptimizationPriority {
+    if (improvement >= PERFORMANCE_SCORE_CONSTANTS.HIGH_PRIORITY_THRESHOLD) {
+      return 'high';
+    }
+    if (improvement >= PERFORMANCE_SCORE_CONSTANTS.MEDIUM_PRIORITY_THRESHOLD) {
+      return 'medium';
+    }
     return 'low';
   }
 }

@@ -189,7 +189,7 @@ export class PluginSandbox {
       this.logger.info(`Sandbox created successfully: ${sandboxId}`);
       return { sandboxId, success: true };
     } catch (error) {
-      this.logger.error(`Sandbox creation failed for ${pluginId}:`, error);
+      this.logger.error(`Sandbox creation failed for ${pluginId}:`, error as Error);
       return {
         sandboxId: '',
         success: false,
@@ -301,7 +301,7 @@ export class PluginSandbox {
         sandbox.state = SandboxState.ERROR;
       }
 
-      this.logger.error(`Sandbox execution failed for ${sandboxId}:`, error);
+      this.logger.error(`Sandbox execution failed for ${sandboxId}:`, error as Error);
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error),
@@ -344,7 +344,7 @@ export class PluginSandbox {
       this.logger.info(`Sandbox destroyed successfully: ${sandboxId}`);
       return { success: true };
     } catch (error) {
-      this.logger.error(`Sandbox destruction failed for ${sandboxId}:`, error);
+      this.logger.error(`Sandbox destruction failed for ${sandboxId}:`, error as Error);
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
@@ -570,7 +570,7 @@ export class PluginSandbox {
       this.logger.info(`Sandbox policy updated: ${sandboxId}`);
       return { success: true };
     } catch (error) {
-      this.logger.error(`Sandbox policy update failed for ${sandboxId}:`, error);
+      this.logger.error(`Sandbox policy update failed for ${sandboxId}:`, error as Error);
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }

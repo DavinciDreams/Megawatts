@@ -1,6 +1,6 @@
-import { Logger } from '../../../utils/logger';
-import { BotError } from '../../../types';
-import { SecurityVulnerability, SensitiveData } from '../../../types/self-editing';
+import { Logger } from '../../utils/logger';
+import { BotError } from '../../utils/errors';
+import { SecurityVulnerability, SensitiveData } from '../../types/self-editing';
 
 /**
  * Security analysis for code vulnerabilities and threats

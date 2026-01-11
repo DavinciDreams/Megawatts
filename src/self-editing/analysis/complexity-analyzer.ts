@@ -1,6 +1,6 @@
-import { Logger } from '../../../utils/logger';
-import { BotError } from '../../../types';
-import { ComplexityMetrics, HalsteadMetrics } from '../../../types/self-editing';
+import { Logger } from '../../utils/logger';
+import { BotError } from '../../utils/errors';
+import { ComplexityMetrics, HalsteadMetrics } from '../../types/self-editing';
 
 /**
  * Complexity analysis for code maintainability assessment

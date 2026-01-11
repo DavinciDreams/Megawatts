@@ -4,7 +4,8 @@
  * Provides S3/MinIO compatible object storage functionality.
  */
 
-export { S3Client, S3Config } from './s3Client';
+import { S3Client, S3Config } from './s3Client';
+
 
 // ============================================================================
 // FACTORY FUNCTION
@@ -21,4 +22,4 @@ export function createObjectStorageClient(logger: any, config: S3Config): S3Clie
 // EXPORTS
 // ============================================================================
 
-export { S3Client, S3Config, createObjectStorageClient };
+export { S3Client, S3Config };

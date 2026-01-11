@@ -47,8 +47,8 @@ export {
   SandboxViolation,
   SandboxResult,
   FileSystemIsolationConfig,
-  NetworkIsolation,
-  ApiRestrictions,
+  NetworkIsolationConfig,
+  ApiRestrictionsConfig,
   VirtualFile,
   FilePermissions,
   RateLimit

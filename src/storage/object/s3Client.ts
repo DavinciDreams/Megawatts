@@ -6,7 +6,7 @@
  */
 
 import { Logger } from '../../utils/logger';
-import { StorageError } from '../errors/storageError';
+import { StorageError, StorageErrorCode } from '../errors/storageError';
 
 // ============================================================================
 // TYPES AND INTERFACES
@@ -111,6 +111,7 @@ export class S3Client {
       this.isConnected = false;
       this.logger.error('Failed to initialize S3/MinIO client', error);
       throw new StorageError(
+        StorageErrorCode.CONNECTION_FAILED,
         `Failed to initialize S3/MinIO client: ${error.message}`,
         { originalError: error }
       );
@@ -189,7 +190,7 @@ export class S3Client {
 
       const result = await this.executeWithRetry(
         () => this.client.putObject(uploadParams)
-      );
+      ) as { ETag: string; Location?: string };
 
       const location = result.Location;
 
@@ -206,6 +207,7 @@ export class S3Client {
     } catch (error: any) {
       this.logger.error('Failed to upload object', error);
       throw new StorageError(
+        StorageErrorCode.OPERATION_FAILED,
         `Failed to upload object ${key}: ${error.message}`,
         { key, originalError: error }
       );
@@ -228,15 +230,23 @@ export class S3Client {
         })
       );
 
+      // Type assertion for result as GetObjectOutput
+      const getObjectResult = result as {
+        ContentLength?: number;
+        ContentType?: string;
+        Body?: Buffer;
+      };
+
       this.logger.info(`Object downloaded successfully: ${key}`, {
-        size: result.ContentLength,
-        contentType: result.ContentType
+        size: getObjectResult.ContentLength,
+        contentType: getObjectResult.ContentType
       });
 
-      return result.Body as Buffer;
+      return getObjectResult.Body as Buffer;
     } catch (error: any) {
       this.logger.error('Failed to download object', error);
       throw new StorageError(
+        StorageErrorCode.OPERATION_FAILED,
         `Failed to download object ${key}: ${error.message}`,
         { key, originalError: error }
       );
@@ -263,6 +273,7 @@ export class S3Client {
     } catch (error: any) {
       this.logger.error('Failed to delete object', error);
       throw new StorageError(
+        StorageErrorCode.OPERATION_FAILED,
         `Failed to delete object ${key}: ${error.message}`,
         { key, originalError: error }
       );
@@ -312,6 +323,7 @@ export class S3Client {
     } catch (error: any) {
       this.logger.error('Failed to list objects', error);
       throw new StorageError(
+        StorageErrorCode.OPERATION_FAILED,
         `Failed to list objects: ${error.message}`,
         { originalError: error }
       );
@@ -336,6 +348,7 @@ export class S3Client {
     } catch (error: any) {
       this.logger.error('Failed to check if object exists', error);
       throw new StorageError(
+        StorageErrorCode.OPERATION_FAILED,
         `Failed to check object existence ${key}: ${error.message}`,
         { key, originalError: error }
       );
@@ -362,6 +375,7 @@ export class S3Client {
     } catch (error: any) {
       this.logger.error('Failed to get object metadata', error);
       throw new StorageError(
+        StorageErrorCode.OPERATION_FAILED,
         `Failed to get metadata for object ${key}: ${error.message}`,
         { key, originalError: error }
       );
@@ -389,6 +403,7 @@ export class S3Client {
     } catch (error: any) {
       this.logger.error('Failed to copy object', error);
       throw new StorageError(
+        StorageErrorCode.OPERATION_FAILED,
         `Failed to copy object ${sourceKey} to ${destinationKey}: ${error.message}`,
         { sourceKey, destinationKey, originalError: error }
       );
@@ -416,6 +431,7 @@ export class S3Client {
     } catch (error: any) {
       this.logger.error('Failed to get signed URL', error);
       throw new StorageError(
+        StorageErrorCode.OPERATION_FAILED,
         `Failed to get signed URL for object ${key}: ${error.message}`,
         { key, originalError: error }
       );
@@ -437,6 +453,7 @@ export class S3Client {
     } catch (error: any) {
       this.logger.error('Failed to create bucket', error);
       throw new StorageError(
+        StorageErrorCode.OPERATION_FAILED,
         `Failed to create bucket ${this.config.bucket}: ${error.message}`,
         { bucket: this.config.bucket, originalError: error }
       );
@@ -562,6 +579,7 @@ export class S3Client {
   private ensureConnected(): void {
     if (!this.isConnected) {
       throw new StorageError(
+        StorageErrorCode.CONNECTION_FAILED,
         'S3/MinIO client is not initialized. Call initialize() first.',
         { operation: 'ensureConnected' }
       );

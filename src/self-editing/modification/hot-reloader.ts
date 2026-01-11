@@ -1,5 +1,5 @@
 import { Logger } from '../../utils/logger';
-import { BotError } from '../../../types';
+import { BotError } from '../../core/errors';
 
 /**
  * Hot reloading for modified code
@@ -46,17 +46,17 @@ export class HotReloader {
       
       return { success, error: success ? undefined : 'Hot reload failed' };
     } catch (error) {
-      this.logger.error(`Hot reload failed for ${modulePath}:`, error);
+      this.logger.error(`Hot reload failed for ${modulePath}:`, error instanceof Error ? error : new Error(String(error)));
       
       // Record failed reload
       this.reloadHistory.push({
         timestamp: new Date(),
         module: modulePath,
         success: false,
-        error: error.toString()
+        error: error instanceof Error ? error.message : String(error)
       });
       
-      return { success: false, error: error.toString() };
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 

@@ -62,6 +62,8 @@ export interface ModelCapability {
 }
 
 export interface AIProviderConfig {
+  name: string;
+  type: 'openai' | 'anthropic' | 'local' | 'custom';
   apiKey?: string;
   baseURL?: string;
   timeout: number;
@@ -109,17 +111,20 @@ export interface ModelPerformance {
   efficiency: number;
 }
 
-export type ModelType =
-  | 'gpt-3.5-turbo'
-  | 'gpt-4'
-  | 'gpt-4-turbo'
-  | 'claude-3-opus'
-  | 'claude-3-sonnet'
-  | 'claude-3-haiku'
-  | 'claude-sonnet-4-5'
-  | 'llama-2'
-  | 'llama-3'
-  | 'custom';
+export const ModelType = {
+  'gpt-3.5-turbo': 'gpt-3.5-turbo',
+  'gpt-4': 'gpt-4',
+  'gpt-4-turbo': 'gpt-4-turbo',
+  'claude-3-opus': 'claude-3-opus',
+  'claude-3-sonnet': 'claude-3-sonnet',
+  'claude-3-haiku': 'claude-3-haiku',
+  'claude-sonnet-4-5': 'claude-sonnet-4-5',
+  'llama-2': 'llama-2',
+  'llama-3': 'llama-3',
+  'custom': 'custom'
+} as const;
+
+export type ModelType = typeof ModelType[keyof typeof ModelType];
 
 export interface RateLimit {
   requestsPerMinute: number;
@@ -895,6 +900,15 @@ export interface AIConfiguration {
     retention?: number;
     indexing?: boolean;
   };
+}
+
+export interface AIConfig {
+  providers: AIProviderConfig[];
+  models: ModelConfig[];
+  routing: RoutingConfig;
+  safety: SafetyConfig;
+  learning: LearningConfig;
+  tools: ToolsConfig;
 }
 
 export interface ModelConfig {

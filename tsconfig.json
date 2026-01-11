@@ -37,7 +37,6 @@
     "node_modules",
     "dist",
     "coverage",
-    "src/self-editing",
     "src/storage",
     "src/config",
     "src/scripts",

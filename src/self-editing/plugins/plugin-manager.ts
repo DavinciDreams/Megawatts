@@ -100,6 +100,8 @@ export interface PluginConfig {
       memory: number;
       cpu: number;
       disk: number;
+      networkBandwidth?: number;
+      maxExecutionTime?: number;
     };
     networkAccess: boolean;
     fileSystemAccess: boolean;
@@ -197,7 +199,22 @@ export class PluginManager extends EventEmitter {
       // Create sandbox if enabled
       let sandboxId: string | undefined;
       if (mergedConfig.sandbox.enabled) {
-        const sandboxResult = await this.pluginSandbox.createSandbox(pluginId, mergedConfig.sandbox);
+        // Construct a SandboxPolicy object with all required properties
+        const sandboxPolicy = {
+          enabled: mergedConfig.sandbox.enabled,
+          resourceLimits: {
+            ...mergedConfig.sandbox.resourceLimits,
+            networkBandwidth: mergedConfig.sandbox.resourceLimits.networkBandwidth ?? 10 * 1024 * 1024, // 10 MB/s default
+            maxExecutionTime: mergedConfig.sandbox.resourceLimits.maxExecutionTime ?? 30000 // 30 seconds default
+          },
+          networkAccess: mergedConfig.sandbox.networkAccess,
+          fileSystemAccess: mergedConfig.sandbox.fileSystemAccess,
+          allowedOperations: [], // Provide sensible defaults or fetch from config
+          executionTimeout: 30000, // 30 seconds default, adjust as needed
+          maxMemoryUsage: mergedConfig.sandbox.resourceLimits.memory,
+          maxCpuTime: mergedConfig.sandbox.resourceLimits.cpu
+        };
+        const sandboxResult = await this.pluginSandbox.createSandbox(pluginId, sandboxPolicy);
         if (!sandboxResult.success) {
           throw new PluginError(`Failed to create sandbox: ${sandboxResult.error}`, 'SANDBOX_ERROR');
         }
@@ -240,7 +257,7 @@ export class PluginManager extends EventEmitter {
 
       return { success: true, plugin: pluginInstance };
     } catch (error) {
-      this.logger.error(`Plugin loading failed for ${pluginId}:`, error);
+      this.logger.error(`Plugin loading failed for ${pluginId}:`, error as Error);
       this.emit(PluginEventType.PLUGIN_ERROR, this.createEvent(PluginEventType.PLUGIN_ERROR, pluginId, undefined, error as Error));
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
@@ -288,7 +305,7 @@ export class PluginManager extends EventEmitter {
 
       return { success: true };
     } catch (error) {
-      this.logger.error(`Plugin unloading failed for ${pluginId}:`, error);
+      this.logger.error(`Plugin unloading failed for ${pluginId}:`, error as Error);
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
@@ -330,7 +347,7 @@ export class PluginManager extends EventEmitter {
         throw new PluginError(`Failed to reload plugin: ${loadResult.error}`, 'RELOAD_FAILED');
       }
     } catch (error) {
-      this.logger.error(`Plugin reload failed for ${pluginId}:`, error);
+      this.logger.error(`Plugin reload failed for ${pluginId}:`, error as Error);
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
@@ -369,7 +386,7 @@ export class PluginManager extends EventEmitter {
 
       return { success: true };
     } catch (error) {
-      this.logger.error(`Plugin enable failed for ${pluginId}:`, error);
+      this.logger.error(`Plugin enable failed for ${pluginId}:`, error as Error);
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
@@ -408,7 +425,7 @@ export class PluginManager extends EventEmitter {
 
       return { success: true };
     } catch (error) {
-      this.logger.error(`Plugin disable failed for ${pluginId}:`, error);
+      this.logger.error(`Plugin disable failed for ${pluginId}:`, error as Error);
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
@@ -530,7 +547,7 @@ export class PluginManager extends EventEmitter {
         plugin.lastError = error as Error;
       }
 
-      this.logger.error(`Plugin command execution failed: ${pluginId}.${command}`, error);
+      this.logger.error(`Plugin command execution failed: ${pluginId}.${command}`, error as Error);
       return { success: false, error: error instanceof Error ? error.message : String(error), executionTime };
     }
   }
@@ -573,7 +590,7 @@ export class PluginManager extends EventEmitter {
       this.logger.debug(`Plugin message sent: ${fromPluginId} -> ${toPluginId}`);
       return { success: true, response };
     } catch (error) {
-      this.logger.error(`Plugin message failed: ${fromPluginId} -> ${toPluginId}`, error);
+      this.logger.error(`Plugin message failed: ${fromPluginId} -> ${toPluginId}`, error as Error);
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
@@ -651,7 +668,7 @@ export class PluginManager extends EventEmitter {
       this.logger.info(`Plugin configuration updated: ${pluginId}`);
       return { success: true };
     } catch (error) {
-      this.logger.error(`Plugin config update failed for ${pluginId}:`, error);
+      this.logger.error(`Plugin config update failed for ${pluginId}:`, error as Error);
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
@@ -928,7 +945,7 @@ export class PluginManager extends EventEmitter {
       try {
         await plugin.module.cleanup();
       } catch (error) {
-        this.logger.warn(`Plugin cleanup failed for ${plugin.id}:`, error);
+        this.logger.warn(`Plugin cleanup failed for ${plugin.id}:`, error as Error);
       }
     }
   }
@@ -1017,7 +1034,7 @@ export class PluginManager extends EventEmitter {
             try {
               await this.performHealthCheck(plugin.id);
             } catch (error) {
-              this.logger.error(`Health check failed for plugin ${plugin.id}:`, error);
+              this.logger.error(`Health check failed for plugin ${plugin.id}:`, error as Error);
             }
           }
         }

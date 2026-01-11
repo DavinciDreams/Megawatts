@@ -7,7 +7,7 @@
  */
 
 export { AISDKAdapter } from './ai-sdk-adapter';
-export { ProviderFactory, ProviderFactoryConfig, CreatedProvider } from './provider-factory';
+export { ProviderFactory, CreatedProvider } from './provider-factory';
 export { ToolConverter, ConversionOptions, ConversionResult } from './tool-converter';
 
 // ============================================================================

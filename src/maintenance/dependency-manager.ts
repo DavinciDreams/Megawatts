@@ -446,6 +446,35 @@ export class DependencyManager extends EventEmitter {
   }
 
   /**
+   * Collect transitive dependencies from package-lock.json
+   * @param entry - Package lock entry to traverse
+   * @param packageName - Target package name
+   * @param collected - Set to collect transitive dependencies
+   */
+  private collectTransitiveDependencies(
+    entry: PackageLockEntry,
+    packageName: string,
+    collected: string[]
+  ): void {
+    if (entry.name === packageName && entry.dependencies) {
+      for (const depName of Object.keys(entry.dependencies)) {
+        if (!collected.includes(depName)) {
+          collected.push(depName);
+          // Recursively collect transitive dependencies
+          this.collectTransitiveDependencies(entry.dependencies[depName], depName, collected);
+        }
+      }
+    }
+    
+    // Also check nested dependencies
+    if (entry.dependencies) {
+      for (const depEntry of Object.values(entry.dependencies)) {
+        this.collectTransitiveDependencies(depEntry, packageName, collected);
+      }
+    }
+  }
+
+  /**
    * Scan dependencies for analysis
    * @returns Array of package information with metadata
    */
@@ -1189,48 +1218,6 @@ export class DependencyManager extends EventEmitter {
     return [...this.testResults];
   }
 
-  /**
-   * Compare two versions
-   * @param version1 - First version
-   * @param version2 - Second version
-   * @returns -1 if version1 < version2, 0 if equal, 1 if version1 > version2
-   */
-  private compareVersions(version1: string, version2: string): number {
-    const v1 = this.parseSemver(version1);
-    const v2 = this.parseSemver(version2);
-
-    if (!v1 || !v2) {
-      return 0;
-    }
-
-    // Compare major version
-    if (v1.major !== v2.major) {
-      return v1.major < v2.major ? -1 : 1;
-    }
-
-    // Compare minor version
-    if (v1.minor !== v2.minor) {
-      return v1.minor < v2.minor ? -1 : 1;
-    }
-
-    // Compare patch version
-    if (v1.patch !== v2.patch) {
-      return v1.patch < v2.patch ? -1 : 1;
-    }
-
-    // Handle prerelease versions
-    if (v1.prerelease && !v2.prerelease) {
-      return -1; // prerelease < release
-    }
-    if (!v1.prerelease && v2.prerelease) {
-      return 1; // release > prerelease
-    }
-    if (v1.prerelease && v2.prerelease) {
-      return v1.prerelease.localeCompare(v2.prerelease);
-    }
-
-    return 0;
-  }
 
   /**
    * Auto-update security patches
@@ -1441,25 +1428,25 @@ export class DependencyManager extends EventEmitter {
   async rollbackDependency(packageName: string, version: string): Promise<RollbackInfo> {
     this.logger.info(`Rolling back dependency ${packageName} to ${version}`);
 
-    try {
-      // Get current package info
-      const packages = await this.getInstalledPackages();
-      const pkg = packages.find(p => p.name === packageName);
+    // Get current package info outside try block for error handling
+    const packages = await this.getInstalledPackages();
+    const pkg = packages.find(p => p.name === packageName);
 
+    // Create rollback info (initialized here for catch block access)
+    const rollbackInfo: RollbackInfo = {
+      updateId: '', // No update ID for manual rollback
+      packageName,
+      fromVersion: pkg?.currentVersion || 'unknown',
+      toVersion: pkg?.currentVersion || 'unknown', // Same as from since we're rolling back
+      rollbackToVersion: version,
+      status: 'in_progress',
+      reason: 'Manual rollback requested',
+    };
+    
+    try {
       if (!pkg) {
         throw new Error(`Package ${packageName} not found in dependencies`);
       }
-
-      // Create rollback info
-      const rollbackInfo: RollbackInfo = {
-        updateId: '', // No update ID for manual rollback
-        packageName,
-        fromVersion: pkg.currentVersion,
-        toVersion: pkg.currentVersion, // Same as from since we're rolling back
-        rollbackToVersion: version,
-        status: 'in_progress',
-        reason: 'Manual rollback requested',
-      };
 
       // Read current package.json
       const packageJson = await this.readPackageJson();
@@ -1500,15 +1487,9 @@ export class DependencyManager extends EventEmitter {
       const errorMessage = error instanceof Error ? error.message : String(error);
       this.logger.error(`Failed to rollback dependency ${packageName}: ${errorMessage}`);
       
-      const rollbackInfo: RollbackInfo = {
-        updateId: '',
-        packageName,
-        fromVersion: pkg?.currentVersion || 'unknown',
-        toVersion: pkg?.currentVersion || 'unknown',
-        rollbackToVersion: version,
-        status: 'failed',
-        reason: errorMessage,
-      };
+      // Update rollback info status to failed
+      rollbackInfo.status = 'failed';
+      rollbackInfo.reason = errorMessage;
       
       this.emit('rollbackFailed', { rollbackInfo, error });
       return rollbackInfo;
@@ -1896,7 +1877,14 @@ export class DependencyManager extends EventEmitter {
         recommendations,
       };
 
-      this.logger.info(`Dependency optimization completed: ${JSON.stringify(result.summary)}`);
+      this.logger.info(`Dependency optimization completed: ${JSON.stringify({
+        totalPackages: result.totalPackages,
+        unusedPackages: result.unusedPackages.length,
+        outdatedPackages: result.outdatedPackages.length,
+        duplicatePackages: result.duplicatePackages.length,
+        securityVulnerabilities: result.securityVulnerabilities.length,
+        estimatedSizeReduction: result.estimatedSizeReduction,
+      })}`);
       this.emit('optimizationCompleted', result);
 
       return result;

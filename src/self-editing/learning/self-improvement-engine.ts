@@ -143,7 +143,7 @@ export class SelfImprovementEngine {
         improvements: [],
         metrics: {},
         duration,
-        error: error.toString()
+        error: error instanceof Error ? error.message : String(error)
       };
     }
   }
@@ -339,7 +339,7 @@ export class SelfImprovementEngine {
    * Estimate execution time
    */
   private estimateExecutionTime(strategyName: string): number {
-    const estimates = {
+    const estimates: Record<string, number> = {
       'code-optimization': 300000, // 5 minutes
       'memory-optimization': 180000, // 3 minutes
       'error-handling': 120000, // 2 minutes
