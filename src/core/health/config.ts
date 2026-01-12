@@ -79,6 +79,10 @@ export const healthCheckThresholds = {
     warning: 0.8, // 80% CPU usage
     critical: 0.95 // 95% CPU usage
   },
+  disk: {
+    warning: 0.8, // 80% disk usage
+    critical: 0.95 // 95% disk usage
+  },
   responseTime: {
     warning: 1000, // 1 second
     critical: 5000 // 5 seconds

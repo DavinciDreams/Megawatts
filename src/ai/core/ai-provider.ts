@@ -58,14 +58,14 @@ export abstract class BaseAIProvider {
     return true;
   }
 
-  protected createError(message: string, code: string, details?: any): AIError {
+  protected createError(message: string, code: string, details?: any, recoverable: boolean = true): AIError {
     return {
       type: 'provider_error',
       code,
       message,
       details,
       timestamp: new Date(),
-      recoverable: true
+      recoverable
     };
   }
 }
@@ -211,7 +211,25 @@ export class OpenAIProvider extends BaseAIProvider {
 
       if (!response.ok) {
         const error = await response.json();
-        throw this.createError(error.error?.message || 'Request failed', 'api_error', error);
+        const errorCode = error.error?.code || '';
+        const errorMessage = error.error?.message || 'Request failed';
+        
+        // Check for quota errors - these are not recoverable and should not be retried
+        const isQuotaError =
+          errorCode === 'insufficient_quota' ||
+          errorCode === 'quota_exceeded' ||
+          errorMessage.toLowerCase().includes('exceeded your current quota');
+        
+        if (isQuotaError) {
+          this.logger.error('OpenAI quota error detected - request will not be retried', new Error(errorMessage), {
+            errorCode,
+            errorMessage,
+            recoverable: false
+          });
+          throw this.createError(errorMessage, errorCode || 'quota_error', error, false);
+        }
+        
+        throw this.createError(errorMessage, 'api_error', error);
       }
 
       const data = await response.json();

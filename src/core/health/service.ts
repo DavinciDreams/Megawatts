@@ -8,6 +8,7 @@ import {
 } from './types';
 import { healthCheckTimeouts, healthCheckThresholds } from './config';
 import { Logger } from '../../utils/logger';
+import { execSync } from 'child_process';
 
 declare const process: {
   memoryUsage(): MemoryUsage;
@@ -209,14 +210,32 @@ export class HealthCheckService {
     const startTime = Date.now();
     
     try {
-      // This would be implemented with actual disk space checking
-      // For now, we'll simulate the check
-      const diskUsagePercent = Math.random() * 100; // Replace with actual disk usage
-      
+      let diskUsagePercent = 0;
+
+      try {
+        // Get actual disk usage using df -h command
+        const result = execSync('df -h .', { encoding: 'utf8' });
+        const lines = result.trim().split('\n');
+        
+        // Parse output - second line contains the usage data
+        if (lines.length >= 2) {
+          const usageLine = lines[1];
+          // Match percentage (e.g., "75%" from output)
+          const match = usageLine.match(/(\d+)%/);
+          if (match) {
+            diskUsagePercent = parseInt(match[1], 10);
+          }
+        }
+      } catch (execError) {
+        // If df command fails, fallback to 0% and log warning
+        logger.warn('Failed to execute df command, using fallback value', execError as Error);
+        diskUsagePercent = 0;
+      }
+
       let status: HealthStatus;
-      if (diskUsagePercent < 80) {
+      if (diskUsagePercent < healthCheckThresholds.disk.warning * 100) {
         status = HealthStatus.HEALTHY;
-      } else if (diskUsagePercent < 95) {
+      } else if (diskUsagePercent < healthCheckThresholds.disk.critical * 100) {
         status = HealthStatus.DEGRADED;
       } else {
         status = HealthStatus.UNHEALTHY;
