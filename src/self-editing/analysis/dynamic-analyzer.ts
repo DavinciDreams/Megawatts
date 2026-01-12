@@ -1,5 +1,5 @@
-import { Logger } from '../../../utils/logger';
-import { BotError } from '../../../types';
+import { Logger } from '../../utils/logger';
+import { BotError } from '../../utils/errors';
 
 /**
  * Dynamic code analysis with execution monitoring
@@ -135,7 +135,7 @@ export class DynamicAnalyzer {
       description: string;
       severity: 'low' | 'medium' | 'high';
     }>;
-  }> {
+  } {
     if (historicalData.length < 2) {
       throw new BotError('Insufficient data for trend analysis', 'medium');
     }
@@ -149,8 +149,8 @@ export class DynamicAnalyzer {
     return {
       trends: {
         responseTime: this.calculateTrend(recentData.map(d => d.responseTime)),
-        memoryUsage: this.calculateTrend(recentData.map(d => d.memoryUsage)),
-        errorRate: this.calculateTrend(recentData.map(d => d.errorCount))
+        memoryUsage: this.convertTrendToDirection(this.calculateTrend(recentData.map(d => d.memoryUsage))),
+        errorRate: this.convertTrendToDirection(this.calculateTrend(recentData.map(d => d.errorCount)))
       },
       predictions: {
         nextResponseTime: avgResponseTime * (1 + (Math.random() - 0.5) * 0.1), // ±10% variation
@@ -246,6 +246,14 @@ export class DynamicAnalyzer {
     }
     
     return difference > 0 ? 'degrading' : 'improving';
+  }
+
+  private convertTrendToDirection(trend: 'improving' | 'stable' | 'degrading'): 'increasing' | 'stable' | 'decreasing' {
+    // Convert generic trend to directional trend
+    // 'improving' means values are going down (good for memory/error rate)
+    // 'degrading' means values are going up (bad for memory/error rate)
+    if (trend === 'stable') return 'stable';
+    return trend === 'degrading' ? 'increasing' : 'decreasing';
   }
 
   private detectAnomalies(data: Array<any>): Array<{

@@ -1,6 +1,33 @@
-import { Logger } from '../../../utils/logger.js';
-import { BotError } from '../../../types.js';
-import { Backup, BackupMetadata } from '../../../types/self-editing.js';
+import { Logger } from '../../utils/logger';
+import { Backup, BackupMetadata } from '../../types/self-editing';
+
+/**
+ * Custom error class for bot operations
+ * Extends native Error with additional properties
+ */
+export class BotError extends Error {
+  code: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  context?: Record<string, any>;
+  timestamp: Date;
+
+  constructor(message: string, severity: 'low' | 'medium' | 'high' | 'critical' = 'medium', code?: string) {
+    super(message);
+    this.name = 'BotError';
+    this.severity = severity;
+    this.code = code || this.generateErrorCode();
+    this.timestamp = new Date();
+    
+    // Maintains proper stack trace for where our error was thrown
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, BotError);
+    }
+  }
+
+  private generateErrorCode(): string {
+    return `ERR_${Date.now()}_${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+  }
+}
 
 /**
  * Manages version control and backup operations for self-editing
@@ -12,7 +39,7 @@ export class VersionManager {
 
   constructor(logger: Logger) {
     this.logger = logger;
-    this.currentVersion = this.getCurrentVersion();
+    this.currentVersion = 'initial'; // Initialize with default value
   }
 
   /**
@@ -55,7 +82,7 @@ export class VersionManager {
       this.logger.info(`Successfully created version ${versionId}`);
       return versionId;
     } catch (error) {
-      this.logger.error(`Failed to create version ${versionId}:`, error);
+      this.logger.error(`Failed to create version ${versionId}:`, error as Error);
       throw new BotError(`Version creation failed: ${error}`, 'medium');
     }
   }
@@ -84,7 +111,7 @@ export class VersionManager {
       
       this.logger.info(`Successfully restored to version ${versionId}`);
     } catch (error) {
-      this.logger.error(`Failed to restore version ${versionId}:`, error);
+      this.logger.error(`Failed to restore version ${versionId}:`, error as Error);
       throw new BotError(`Version restoration failed: ${error}`, 'high');
     }
   }
@@ -130,7 +157,7 @@ export class VersionManager {
         await this.deleteVersion(version.id);
         this.versions.delete(version.id);
       } catch (error) {
-        this.logger.warn(`Failed to delete version ${version.id}:`, error);
+        this.logger.warn(`Failed to delete version ${version.id}:`, { error: error as Error });
       }
     }
   }
@@ -189,6 +216,6 @@ export class VersionManager {
   }
 
   private generateVersionId(): string {
-    return `v_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `v_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 }

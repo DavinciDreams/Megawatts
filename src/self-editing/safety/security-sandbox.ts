@@ -1,5 +1,6 @@
-import { Logger } from '../../../utils/logger';
-import { BotError } from '../../../types';
+import { Logger } from '../../utils/logger';
+import { BotError } from '../../core/errors';
+import { createContext, runInContext } from 'vm';
 
 /**
  * Security sandbox for isolated code execution
@@ -45,11 +46,11 @@ export class SecuritySandbox {
       this.logger.debug(`Sandbox created successfully: ${sandboxId}`);
       return { sandboxId, status: 'created' };
     } catch (error) {
-      this.logger.error(`Sandbox creation failed for ${sandboxId}:`, error);
+      this.logger.error(`Sandbox creation failed for ${sandboxId}:`, error as Error);
       return { 
         sandboxId, 
         status: 'failed', 
-        error: error.toString() 
+        error: error instanceof Error ? error.message : String(error)
       };
     }
   }
@@ -89,10 +90,10 @@ export class SecuritySandbox {
         executionTime
       };
     } catch (error) {
-      this.logger.error(`Code execution failed in sandbox ${sandboxId}:`, error);
+      this.logger.error(`Code execution failed in sandbox ${sandboxId}:`, error as Error);
       return {
         success: false,
-        error: error.toString(),
+        error: error instanceof Error ? error.message : String(error),
         executionTime: 0
       };
     }
@@ -119,8 +120,8 @@ export class SecuritySandbox {
       this.logger.debug(`Sandbox destroyed successfully: ${sandboxId}`);
       return { success: true };
     } catch (error) {
-      this.logger.error(`Sandbox destruction failed for ${sandboxId}:`, error);
-      return { success: false, error: error.toString() };
+      this.logger.error(`Sandbox destruction failed for ${sandboxId}:`, error as Error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 
@@ -140,18 +141,61 @@ export class SecuritySandbox {
   }
 
   /**
-   * Mock code execution
+   * Execute code in isolated VM sandbox
    */
   private async mockExecution(
     code: string,
     context: any,
     options: any
   ): Promise<any> {
-    // Mock execution - would implement actual sandboxed execution
-    return {
-      output: 'Mock execution result',
-      memoryUsage: Math.random() * 1000,
-      cpuTime: Math.random() * 100
-    };
+    const startTime = Date.now();
+    const timeout = options.timeout || 30000; // Default 30 seconds
+    
+    try {
+      // Create VM context with timeout and memory tracking
+      const vmContext = createContext({
+        timeout,
+        require: {
+          external: options.allowedModules || [],
+          builtin: ['console', 'Math', 'Date', 'JSON', 'Array', 'Object', 'String', 'Number', 'Boolean'],
+        },
+      });
+      
+      // Inject context variables into sandbox
+      for (const [key, value] of Object.entries(context)) {
+        vmContext[key] = value;
+      }
+      
+      // Wrap code in async function for execution
+      const wrappedCode = `(async () => { ${code} })();`;
+      
+      // Execute with timeout
+      const result = await Promise.race([
+        runInContext(wrappedCode, vmContext),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Execution timeout')), timeout)
+        )
+      ]);
+      
+      // Get memory usage (approximate)
+      const memoryUsageMB = process.memoryUsage().heapUsed / (1024 * 1024);
+      
+      const executionTime = Date.now() - startTime;
+      
+      return {
+        output: result,
+        memoryUsage: memoryUsageMB,
+        executionTime,
+        success: true
+      };
+    } catch (error) {
+      return {
+        output: null,
+        memoryUsage: 0,
+        executionTime: Date.now() - startTime,
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
   }
 }

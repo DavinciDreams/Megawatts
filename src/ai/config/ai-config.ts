@@ -15,8 +15,8 @@ import {
   ToolsConfig,
   ModelType,
   SafetyType
-} from '../../../types/ai';
-import { Logger } from '../../../utils/logger';
+} from '../../types/ai';
+import { Logger } from '../../utils/logger';
 
 // ============================================================================
 // AI CONFIGURATION MANAGER CLASS

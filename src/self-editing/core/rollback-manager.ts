@@ -1,6 +1,6 @@
-import { Logger } from '../../../utils/logger.js';
-import { BotError } from '../../../types.js';
-import { RollbackPlan, CodeModification } from '../../../types/self-editing.js';
+import { Logger } from '../../utils/logger.js';
+import { BotError } from '../../core/errors';
+import { RollbackPlan, CodeModification } from '../../types/self-editing';
 
 /**
  * Manages rollback operations for failed modifications
@@ -68,7 +68,7 @@ export class RollbackManager {
         error: error instanceof Error ? error.message : String(error)
       });
       
-      this.logger.error(`Rollback ${rollbackId} failed:`, error);
+      this.logger.error(`Rollback ${rollbackId} failed:`, error as Error);
       throw new BotError(`Rollback failed: ${error}`, 'high');
     }
   }

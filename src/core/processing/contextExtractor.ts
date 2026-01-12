@@ -56,7 +56,6 @@ export class ContextExtractor {
 
       this.logger.debug(`Context extracted for message ${message.id}`);
       return context;
-
     } catch (error) {
       this.logger.error('Error extracting context:', error);
       throw error;
@@ -107,25 +106,58 @@ export class ContextExtractor {
       return cached;
     }
 
-    try {
-      // This would typically fetch from database or Discord API
-      // For now, return basic context
-      // Placeholder implementation TODO
-      const context: GuildContext = {
-        memberCount: 0, // Would be fetched from guild
-        userRoles: [], // Would be fetched from member
-        channelType: 'text', // Would be determined from channel
-        activeModerators: [],
-        guildRules: []
-      };
+    // Fetch guild context from Discord API or database
+    // For now, return basic context with placeholder data
+    const context: GuildContext = {
+      memberCount: Math.floor(Math.random() * 1000), // Mock: would be fetched from guild
+      userRoles: ['@everyone', '@verified'], // Mock: would be fetched from member
+      channelType: 'text', // Mock: would be determined from channel
+      activeModerators: [], // Mock: would be fetched from guild
+      guildRules: [] // Mock: would be fetched from guild
+    };
 
-      this.guildContextCache.set(guildId, context);
-      return context;
+    this.guildContextCache.set(guildId, context);
+    return context;
+  }
 
-    } catch (error) {
-      this.logger.warn(`Failed to get guild context for ${guildId}:`, error);
-      return undefined;
-    }
+  /**
+   * Get guild member count
+   */
+  private async getGuildMemberCount(guildId: string): Promise<number> {
+    // Mock implementation - would fetch from Discord API
+    return Math.floor(Math.random() * 1000);
+  }
+
+  /**
+   * Get user roles for guild
+   */
+  private async getUserRoles(guildId: string, userId: string): Promise<string[]> {
+    // Mock implementation - would fetch from Discord API
+    return ['@everyone', '@verified'];
+  }
+
+  /**
+   * Get channel type
+   */
+  private async getChannelType(channelId: string): Promise<string> {
+    // Mock implementation - would fetch from Discord API
+    return 'text';
+  }
+
+  /**
+   * Get active moderators
+   */
+  private async getActiveModerators(guildId: string): Promise<string[]> {
+    // Mock implementation - would fetch from Discord API
+    return [];
+  }
+
+  /**
+   * Get guild rules
+   */
+  private async getGuildRules(guildId: string): Promise<string[]> {
+    // Mock implementation - would fetch from Discord API
+    return [];
   }
 
   /**
@@ -162,18 +194,18 @@ export class ContextExtractor {
 
     // Update message count
     history.messageCount++;
-    
+
     // Update last message time
     history.lastMessageTime = new Date();
-    
+
     // Update average message length
     history.averageMessageLength = 
       (history.averageMessageLength * (history.messageCount - 1) + contentLength) / 
       history.messageCount;
-    
+
     // Update common patterns (simple implementation)
     this.updateCommonPatterns(history, content);
-    
+
     // Update spam score
     history.spamScore = this.calculateSpamScore(history);
 
@@ -189,10 +221,11 @@ export class ContextExtractor {
     
     words.forEach(word => {
       const existing = history.commonPatterns.find(pattern => pattern === word);
-      if (existing) {
+      if (!existing) {
         // Increment frequency (not stored in current structure, would need enhancement)
-      } else if (history.commonPatterns.length < 10) {
-        history.commonPatterns.push(word);
+        if (history.commonPatterns.length < 10) {
+          history.commonPatterns.push(word);
+        }
       }
     });
   }
@@ -202,7 +235,7 @@ export class ContextExtractor {
    */
   private calculateSpamScore(history: UserMessageHistory): number {
     let score = 0;
-    
+
     // High message frequency
     const timeSinceLastMessage = Date.now() - history.lastMessageTime.getTime();
     if (timeSinceLastMessage < 1000) { // Less than 1 second
@@ -210,17 +243,17 @@ export class ContextExtractor {
     } else if (timeSinceLastMessage < 5000) { // Less than 5 seconds
       score += 0.1;
     }
-    
+
     // Short messages (potential spam)
     if (history.averageMessageLength < 10) {
       score += 0.2;
     }
-    
+
     // High message count in short time
     if (history.messageCount > 10) {
       score += 0.2;
     }
-    
+
     return Math.min(score, 1.0);
   }
 

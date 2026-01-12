@@ -1,6 +1,6 @@
-import { Logger } from '../../../utils/logger';
-import { BotError } from '../../../types';
-import { Dependency, CircularDependency, OutdatedDependency } from '../../../types/self-editing';
+import { Logger } from '../../utils/logger';
+import { BotError } from '../../utils/errors';
+import { Dependency, CircularDependency, OutdatedDependency } from '../../types/self-editing';
 
 /**
  * Dependency analysis for code relationships and conflicts
@@ -177,7 +177,7 @@ export class DependencyAnalyzer {
       version: string;
       dependencies: string[];
     }[];
-  }> {
+  } {
     // Mock dependency report generation
     return {
       summary: {

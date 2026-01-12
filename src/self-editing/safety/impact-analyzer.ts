@@ -258,7 +258,12 @@ export interface ImpactAnalyzerConfig {
 export class ImpactAnalyzer {
   private logger: Logger;
   private config: ImpactAnalyzerConfig;
-  private baselineMetrics: Map<string, PerformanceMetrics> = new Map();
+  private baselineMetrics: Map<string, {
+    performance: PerformanceMetrics;
+    security: SecurityMetrics;
+    userExperience: UserExperienceMetrics;
+    systemStability: SystemStabilityMetrics;
+  }> = new Map();
   private monitoringIntervals: Map<string, NodeJS.Timeout> = new Map();
 
   constructor(config: ImpactAnalyzerConfig, logger: Logger) {

@@ -1,4 +1,4 @@
-import { Logger } from '../../../utils/logger.js';
+import { Logger } from '../../utils/logger.js';
 
 /**
  * Self-improvement strategies and execution
@@ -61,7 +61,7 @@ export class SelfImprovementEngine {
       this.logger.debug(`Improvement analysis completed: ${suggestions.length} suggestions`);
       return { suggestions, currentHealth };
     } catch (error) {
-      this.logger.error('Improvement analysis failed:', error);
+      this.logger.error('Improvement analysis failed:', error instanceof Error ? error : new Error(String(error)));
       throw error;
     }
   }
@@ -125,7 +125,7 @@ export class SelfImprovementEngine {
         };
       }
     } catch (error) {
-      this.logger.error(`Improvement execution error for ${strategyName}:`, error);
+      this.logger.error(`Improvement execution error for ${strategyName}:`, error instanceof Error ? error : new Error(String(error)));
       const duration = Date.now() - startTime;
       
       this.improvementHistory.push({
@@ -143,7 +143,7 @@ export class SelfImprovementEngine {
         improvements: [],
         metrics: {},
         duration,
-        error: error.toString()
+        error: error instanceof Error ? error.message : String(error)
       };
     }
   }
@@ -339,7 +339,7 @@ export class SelfImprovementEngine {
    * Estimate execution time
    */
   private estimateExecutionTime(strategyName: string): number {
-    const estimates = {
+    const estimates: Record<string, number> = {
       'code-optimization': 300000, // 5 minutes
       'memory-optimization': 180000, // 3 minutes
       'error-handling': 120000, // 2 minutes

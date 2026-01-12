@@ -75,6 +75,7 @@ export const DEFAULT_HEALTH_CHECK_CONFIG: HealthCheckConfig = {
 export class HealthMonitor extends EventEmitter {
   private config: HealthCheckConfig;
   private components: Map<string, ComponentHealth> = new Map();
+  private componentCheckFunctions: Map<string, () => Promise<{ healthy: boolean; message?: string; metrics?: Record<string, number> }>> = new Map();
   private checkInterval?: NodeJS.Timeout;
   private startTime: Date;
   private errorCount: number = 0;
@@ -119,11 +120,15 @@ export class HealthMonitor extends EventEmitter {
     name: string,
     checkFn: () => Promise<{ healthy: boolean; message?: string; metrics?: Record<string, number> }>
   ): void {
+    // Store the component health info
     this.components.set(name, {
       name,
       status: HealthStatus.HEALTHY,
       lastCheck: new Date(),
     });
+
+    // Store the check function for actual health checks
+    this.componentCheckFunctions.set(name, checkFn);
 
     this.emit('componentRegistered', name);
   }
@@ -133,6 +138,7 @@ export class HealthMonitor extends EventEmitter {
    */
   unregisterComponent(name: string): void {
     this.components.delete(name);
+    this.componentCheckFunctions.delete(name);
     this.emit('componentUnregistered', name);
   }
 

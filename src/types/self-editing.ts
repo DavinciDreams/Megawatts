@@ -251,7 +251,7 @@ export interface SecurityVulnerability {
 export interface SensitiveData {
   type: string;
   location: CodeLocation;
-  risk: 'low' | 'medium' | 'high';
+  risk: 'low' | 'medium' | 'high' | 'critical';
   recommendation: string;
 }
 

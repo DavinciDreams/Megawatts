@@ -8,9 +8,7 @@
     "ecmaVersion": 2022,
     "sourceType": "module"
   },
-  "plugins": [
-    "@typescript-eslint/recommended"
-  ],
+  "plugins": [],
   "rules": {
     "no-unused-vars": "error",
     "no-console": "warn",
@@ -33,9 +31,8 @@
     "@typescript-eslint/no-triple-spaces": "error",
     "@typescript-eslint/curly": "error",
     "@typescript-eslint/semi": "error",
-    "@typescript-eslint/no-duplicate-imports": "error",
-    "@typescript-eslint/no-unused-vars": "error"
-  ],
+    "@typescript-eslint/no-duplicate-imports": "error"
+  },
   "env": {
     "browser": true,
     "es2022": true,

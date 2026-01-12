@@ -112,6 +112,20 @@ export class ConversationalAIProviderRouter {
           requestId
         );
 
+        // Validate AI response content before building conversational response
+        // This prevents propagating empty responses that would cause Discord API errors
+        if (!response.content || response.content.trim().length === 0) {
+          // Allow empty content if tool calls are present
+          if (!response.toolCalls || response.toolCalls.length === 0) {
+            this.logger.warn(`[AI-ROUTER] Provider ${providerId} returned empty response`, {
+              requestId,
+              provider: providerId,
+            });
+            // Continue to next provider instead of returning empty response
+            throw new Error(`Provider ${providerId} returned empty response`);
+          }
+        }
+
         // Update provider health on success
         this.updateProviderHealthSuccess(providerId);
 
@@ -268,6 +282,30 @@ export class ConversationalAIProviderRouter {
   }
 
   /**
+   * Check if error is retryable
+   * Non-retryable errors include quota, authentication, and permission issues
+   */
+  private isRetryableError(error: Error): boolean {
+    const nonRetryablePatterns = [
+      'quota_exceeded',
+      'insufficient_quota',
+      'invalid_api_key',
+      'invalid_request',
+      'permission_denied'
+    ];
+
+    const errorMessage = error.message.toLowerCase();
+    const errorCode = (error as any).code?.toLowerCase() || '';
+    
+    // Check if error matches any non-retryable pattern
+    const isNonRetryable = nonRetryablePatterns.some(pattern =>
+      errorMessage.includes(pattern) || errorCode.includes(pattern)
+    );
+    
+    return !isNonRetryable;
+  }
+
+  /**
    * Execute request with retry logic and exponential backoff
    */
   private async executeWithRetry(
@@ -310,15 +348,44 @@ export class ConversationalAIProviderRouter {
 
       } catch (error) {
         lastError = error as Error;
+        const errorMessage = (error as Error).message;
+        
+        // Check for quota errors specifically
+        const isQuotaError = errorMessage.toLowerCase().includes('quota') ||
+          (error as any).code?.toLowerCase().includes('quota');
+        
+        if (isQuotaError) {
+          this.logger.error('Quota error detected - request will not be retried', error as Error, {
+            requestId,
+            provider: providerId,
+            attempt,
+            errorCode: (error as any).code,
+            recoverable: false
+          });
+          // Quota errors are not retryable - throw immediately
+          throw error;
+        }
+
         this.logger.warn('Request attempt failed', {
           requestId,
           provider: providerId,
           attempt,
-          error: (error as Error).message,
+          error: errorMessage,
         });
 
         // Update provider health on failure
         this.updateProviderHealthFailure(providerId, error as Error);
+
+        // Check if error is retryable before attempting retry
+        if (!this.isRetryableError(error as Error)) {
+          this.logger.warn('Error is not retryable - aborting retries', {
+            requestId,
+            provider: providerId,
+            attempt,
+            error: errorMessage,
+          });
+          throw error;
+        }
 
         // If not the last attempt, wait with exponential backoff
         if (attempt < this.maxRetries) {
@@ -390,8 +457,13 @@ export class ConversationalAIProviderRouter {
     // Include tools if provided and tool calling is enabled
     if (request.tools && request.config.features.toolCalling) {
       aiRequest.tools = request.tools;
+      aiRequest.tool_choice = 'auto'; // Enable AI to decide when to call tools
+      this.logger.info('[DEBUG-TOOL] Setting tool_choice to auto for AI request');
     }
-    this.logger.info('[DEBUG-TOOL] Adding tools to AI request:', { hasTools: !!aiRequest.tools });
+    this.logger.info('[DEBUG-TOOL] Adding tools to AI request:', {
+      hasTools: !!aiRequest.tools,
+      toolChoice: aiRequest.tool_choice
+    });
 
     return aiRequest;
   }

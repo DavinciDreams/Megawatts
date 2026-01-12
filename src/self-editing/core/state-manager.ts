@@ -1,12 +1,12 @@
-import { Logger } from '../../../utils/logger.js';
-import { BotError } from '../../../types.js';
+import { Logger } from '../../utils/logger.js';
+import { BotError } from '../../core/errors';
 import {
   ProgressTracker,
   AuditLog,
   HealthCheck,
   SelfEditingEvent,
   SelfEditingEventType
-} from '../../../types/self-editing.js';
+} from '../../types/self-editing.js';
 
 /**
  * Manages state tracking and persistence for self-editing operations
@@ -39,7 +39,7 @@ export class StateManager {
       
       this.logger.info('State Manager initialized successfully');
     } catch (error) {
-      this.logger.error('Failed to initialize State Manager:', error);
+      this.logger.error('Failed to initialize State Manager:', error as Error);
       throw new BotError(`State initialization failed: ${error}`, 'medium');
     }
   }
@@ -236,7 +236,7 @@ export class StateManager {
       // Mock persistence - would implement actual storage logic
       this.logger.debug('State persisted successfully');
     } catch (error) {
-      this.logger.error('Failed to persist state:', error);
+      this.logger.error('Failed to persist state:', error as Error);
       throw new BotError(`State persistence failed: ${error}`, 'medium');
     }
   }
@@ -249,7 +249,7 @@ export class StateManager {
       // Mock loading - would implement actual loading logic
       this.logger.debug('Persisted state loaded successfully');
     } catch (error) {
-      this.logger.warn('Failed to load persisted state:', error);
+      this.logger.warn('Failed to load persisted state:', error as Error);
       // Continue with default state
     }
   }
@@ -336,7 +336,7 @@ export class StateManager {
       
       this.logger.info('State imported successfully');
     } catch (error) {
-      this.logger.error('Failed to import state:', error);
+      this.logger.error('Failed to import state:', error as Error);
       throw new BotError(`State import failed: ${error}`, 'medium');
     }
   }

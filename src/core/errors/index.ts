@@ -18,6 +18,8 @@ export { RetryHandler, type RetryAttempt, type RetryResult } from './retry';
 export { ErrorMessageFormatter } from './formatter';
 export { ErrorReporter } from './reporter';
 export { ErrorHandler, type DiscordContext, type ErrorHandlingResult } from './handler';
+export { BotError } from './bot-error';
+export { SelfEditingError } from './self-editing-error';
 
 // Export utility functions
 export { createDefaultErrorHandler, createCustomErrorHandler, createErrorHandlerWithOptions } from './factory';

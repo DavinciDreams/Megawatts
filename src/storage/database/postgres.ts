@@ -235,7 +235,7 @@ export class PostgresConnectionManager {
    */
   async storeColdTier(key: string, value: any, compress: boolean = true): Promise<void> {
     const serializedValue = JSON.stringify(value);
-    const compressedValue = compress ? this.compressData(serializedValue) : serializedValue;
+    const compressedValue = compress ? await this.compressData(serializedValue) : serializedValue;
     
     await this.query(
       `INSERT INTO tiered_storage_cold (id, value, compressed, created_at, updated_at)
@@ -470,24 +470,54 @@ export class PostgresConnectionManager {
   }
 
   /**
-   * Compresses data using simple compression
-   * In production, use a proper compression library like zlib
-   * @param data - Data to compress
-   * @returns Compressed data
+   * Compresses data using zlib deflate algorithm
+   * Handles both string and buffer inputs
+   * @param data - Data to compress (string or Buffer)
+   * @returns Compressed data as base64-encoded string for storage
    */
-  private compressData(data: string): string {
-    // Placeholder - implement proper compression using zlib
-    return data;
+  private async compressData(data: string | Buffer): Promise<string> {
+    try {
+      // Convert string to Buffer if necessary
+      const inputBuffer = typeof data === 'string' ? Buffer.from(data, 'utf8') : data;
+      
+      // Compress using deflate algorithm
+      const compressedBuffer = await deflate(inputBuffer);
+      
+      // Convert to base64 for storage in database
+      return compressedBuffer.toString('base64');
+    } catch (error) {
+      this.logger.error('Failed to compress data:', error);
+      throw new DatabaseError(
+        DatabaseErrorCode.QUERY_EXECUTION_FAILED,
+        'Failed to compress data',
+        { error: error instanceof Error ? error.message : String(error) }
+      );
+    }
   }
 
   /**
-   * Decompresses data
-   * In production, use a proper decompression library like zlib
-   * @param data - Data to decompress
-   * @returns Decompressed data
+   * Decompresses data using zlib inflate algorithm
+   * Handles base64-encoded compressed data
+   * @param data - Compressed data (base64-encoded string)
+   * @returns Decompressed data as string
    */
-  private decompressData(data: string): string {
-    // Placeholder - implement proper decompression using zlib
-    return data;
+  private async decompressData(data: string): Promise<string> {
+    try {
+      // Convert base64 string back to Buffer
+      const compressedBuffer = Buffer.from(data, 'base64');
+      
+      // Decompress using inflate algorithm
+      const decompressedBuffer = await inflate(compressedBuffer);
+      
+      // Convert Buffer to string
+      return decompressedBuffer.toString('utf8');
+    } catch (error) {
+      this.logger.error('Failed to decompress data:', error);
+      throw new DatabaseError(
+        DatabaseErrorCode.QUERY_EXECUTION_FAILED,
+        'Failed to decompress data',
+        { error: error instanceof Error ? error.message : String(error) }
+      );
+    }
   }
 }

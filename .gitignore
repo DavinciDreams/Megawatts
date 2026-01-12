@@ -38,6 +38,12 @@ temp/
 
 # Security
 *.pem
+ 
+# Data folders
+data/grafana/
+data/postgres/
+data/prometheus/
+data/redis/
 *.key
 *.p12
 

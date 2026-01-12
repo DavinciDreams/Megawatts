@@ -1,4 +1,4 @@
-import { Logger } from '../../../utils/logger.js';
+import { Logger } from '../../utils/logger.js';
 
 /**
  * User behavior adaptation system
@@ -52,7 +52,7 @@ export class BehaviorAdapter {
       this.logger.debug(`Behavior analysis completed: ${patterns.length} patterns found`);
       return { patterns, adaptations };
     } catch (error) {
-      this.logger.error('Behavior analysis failed:', error);
+      this.logger.error('Behavior analysis failed:', error as Error);
       throw error;
     }
   }
@@ -82,8 +82,8 @@ export class BehaviorAdapter {
         return { success: false, error: 'Adaptation application failed' };
       }
     } catch (error) {
-      this.logger.error(`Behavior adaptation error:`, error);
-      return { success: false, error: error.toString() };
+      this.logger.error(`Behavior adaptation error:`, error as Error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 
@@ -125,7 +125,7 @@ export class BehaviorAdapter {
       
       this.logger.debug('Adaptation learning completed');
     } catch (error) {
-      this.logger.error('Adaptation learning failed:', error);
+      this.logger.error('Adaptation learning failed:', error as Error);
       throw error;
     }
   }

@@ -1,6 +1,6 @@
 /**
  * Self-Editing Monitoring System
- * 
+ *
  * Main export file for all monitoring-related modules.
  * Provides comprehensive health, performance, metrics, and anomaly detection.
  */
@@ -87,20 +87,19 @@ export class MonitoringSystem {
     anomalyConfig?: any
   ): void {
     // Initialize health monitor
-    const healthMonitor = getHealthMonitor(healthConfig);
+    const healthMonitor = this.getHealthMonitor();
     healthMonitor.start();
 
     // Initialize performance tracker
-    const performanceTracker = getPerformanceTracker(performanceConfig);
+    const performanceTracker = this.getPerformanceTracker();
     performanceTracker.start();
 
     // Initialize metrics collector
-    const metricsCollector = getMetricsCollector(metricsConfig);
+    const metricsCollector = this.getMetricsCollector();
     metricsCollector.start();
 
     // Initialize anomaly detector
-    const anomalyDetector = getAnomalyDetector(anomalyConfig);
-
+    const anomalyDetector = this.getAnomalyDetector();
     // Set up event listeners
     this.setupEventListeners(healthMonitor, performanceTracker, metricsCollector, anomalyDetector);
   }
@@ -145,28 +144,28 @@ export class MonitoringSystem {
    * Get health monitor
    */
   getHealthMonitor(): any {
-    return getHealthMonitor();
+    return (require('./health-monitor.js').getHealthMonitor)();
   }
 
   /**
    * Get performance tracker
    */
   getPerformanceTracker(): any {
-    return getPerformanceTracker();
+    return (require('./performance-tracker.js').getPerformanceTracker)();
   }
 
   /**
    * Get metrics collector
    */
   getMetricsCollector(): any {
-    return getMetricsCollector();
+    return (require('./metrics-collector.js').getMetricsCollector)();
   }
 
   /**
    * Get anomaly detector
    */
   getAnomalyDetector(): any {
-    return getAnomalyDetector();
+    return (require('./anomaly-detector.js').getAnomalyDetector)();
   }
 
   /**

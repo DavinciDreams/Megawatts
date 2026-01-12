@@ -1,4 +1,4 @@
-import { Logger } from '../../../utils/logger';
+import { Logger } from '../../utils/logger';
 
 /**
  * Permission management for self-editing operations
@@ -54,7 +54,7 @@ export class PermissionManager {
         reason: permission.reason
       };
     } catch (error) {
-      this.logger.error(`Permission check failed for ${operation}:`, error);
+      this.logger.error(`Permission check failed for ${operation}:`, error as Error);
       return {
         allowed: false,
         reason: `Permission check failed: ${error}`
@@ -90,8 +90,8 @@ export class PermissionManager {
       this.logger.debug(`Permission granted for operation: ${operation}`);
       return { success: true };
     } catch (error) {
-      this.logger.error(`Failed to grant permission for ${operation}:`, error);
-      return { success: false, error: error.toString() };
+      this.logger.error(`Failed to grant permission for ${operation}:`, error as Error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 

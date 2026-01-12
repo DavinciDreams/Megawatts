@@ -7,6 +7,7 @@
 
 import { ToolCall, Tool } from '../../types/ai';
 import { ExecutionContext } from './tool-executor';
+import { ToolRegistry } from './tool-registry';
 import { Logger } from '../../utils/logger';
 import { BotError } from '../../utils/errors';
 
@@ -55,7 +56,7 @@ export interface SandboxResult {
   sandboxContext: SandboxContext;
 }
 
-interface FileSystemIsolation {
+export interface FileSystemIsolationConfig {
   allowedPaths: string[];
   blockedPaths: string[];
   virtualFileSystem: Map<string, VirtualFile>;
@@ -63,7 +64,7 @@ interface FileSystemIsolation {
   maxFiles: number;
 }
 
-interface NetworkIsolation {
+export interface NetworkIsolationConfig {
   allowedDomains: string[];
   blockedDomains: string[];
   allowedProtocols: string[];
@@ -72,7 +73,7 @@ interface NetworkIsolation {
   maxRequests: number;
 }
 
-interface ApiRestrictions {
+export interface ApiRestrictionsConfig {
   allowedApis: string[];
   blockedApis: string[];
   rateLimits: Map<string, RateLimit>;
@@ -113,10 +114,12 @@ export class ToolSandbox {
   private networkIsolation: NetworkIsolation;
   private apiRestrictions: ApiRestrictions;
   private permissionManager: PermissionManager;
+  private toolRegistry: ToolRegistry | null = null;
 
-  constructor(config: SandboxConfig, logger: Logger) {
+  constructor(config: SandboxConfig, logger: Logger, toolRegistry?: ToolRegistry) {
     this.logger = logger;
     this.config = config;
+    this.toolRegistry = toolRegistry || null;
 
     this.fileSystemIsolation = new FileSystemIsolation({
       allowedPaths: config.allowedPaths || [],
@@ -136,6 +139,7 @@ export class ToolSandbox {
     this.apiRestrictions = new ApiRestrictions({
       allowedApis: config.allowedApis || [],
       blockedApis: config.blockedApis || [],
+      rateLimits: new Map<string, RateLimit>(),
       permissionChecks: true
     }, logger);
 
@@ -263,20 +267,55 @@ export class ToolSandbox {
     sandboxContext: SandboxContext,
     startTime: number
   ): Promise<SandboxResult> {
-    // This would delegate to the actual tool executor
-    // For now, return a placeholder result
-    return {
-      success: true,
-      result: {
+    this.logger.info('Executing tool directly (sandbox disabled)', {
+      tool: toolCall.name,
+      userId: context.userId
+    });
+
+    try {
+      // Get the tool from the tool registry
+      const tool = this.toolRegistry?.getTool(toolCall.name);
+      
+      if (!tool) {
+        throw new BotError(
+          `Tool '${toolCall.name}' not found in registry`,
+          'medium',
+          { tool: toolCall.name }
+        );
+      }
+
+      // Execute the tool with its arguments
+      const result = await tool.execute(toolCall.arguments, context);
+
+      const executionTime = Date.now() - startTime;
+
+      this.logger.info('Tool executed successfully', {
         tool: toolCall.name,
-        arguments: toolCall.arguments,
-        executed: true,
-        timestamp: new Date()
-      },
-      violations: [],
-      executionTime: Date.now() - startTime,
-      sandboxContext
-    };
+        executionTime
+      });
+
+      return {
+        success: true,
+        result,
+        violations: [],
+        executionTime,
+        sandboxContext
+      };
+    } catch (error) {
+      const executionTime = Date.now() - startTime;
+
+      this.logger.error('Tool execution failed', error as Error, {
+        tool: toolCall.name
+      });
+
+      return {
+        success: false,
+        error: error as Error,
+        violations: [],
+        executionTime,
+        sandboxContext
+      };
+    }
   }
 
   /**
@@ -352,20 +391,8 @@ export class ToolSandbox {
    * Check if tool is allowed in sandbox
    */
   private checkToolAllowed(toolName: string): boolean {
-    // Check if tool is in blocked APIs
-    if (this.apiRestrictions.blockedApis.includes(toolName)) {
-      return false;
-    }
-
-    // Check if tool is in allowed APIs (if whitelist is configured)
-    if (
-      this.apiRestrictions.allowedApis.length > 0 &&
-      !this.apiRestrictions.allowedApis.includes(toolName)
-    ) {
-      return false;
-    }
-
-    return true;
+    // Use the public method to check if API is allowed
+    return this.apiRestrictions.isApiAllowed(toolName);
   }
 
   /**
@@ -591,6 +618,26 @@ export class ToolSandbox {
   }
 
   /**
+   * Determine if an error is security-related
+   */
+  private isSecurityError(error: Error): boolean {
+    // You can customize this logic as needed
+    if (error instanceof BotError) {
+      // If BotError has a severity or type indicating security
+      return error.severity === 'high' || error.severity === 'critical';
+    }
+    // Fallback: check error message for keywords
+    const msg = error.message.toLowerCase();
+    return (
+      msg.includes('permission') ||
+      msg.includes('access denied') ||
+      msg.includes('security') ||
+      msg.includes('not allowed') ||
+      msg.includes('forbidden')
+    );
+  }
+
+  /**
    * Get active sandbox contexts
    */
   getActiveSandboxes(): SandboxContext[] {
@@ -602,22 +649,6 @@ export class ToolSandbox {
    */
   private generateSandboxId(): string {
     return `sandbox_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  /**
-   * Check if an error is a security-related error
-   */
-  private isSecurityError(error: Error): boolean {
-    const securityErrorMessages = [
-      'access denied',
-      'permission denied',
-      'unauthorized',
-      'forbidden',
-      'blocked',
-      'security violation'
-    ];
-    const lowerMessage = error.message.toLowerCase();
-    return securityErrorMessages.some(msg => lowerMessage.includes(msg));
   }
 
   /**
@@ -639,12 +670,12 @@ export class ToolSandbox {
 // ============================================================================
 
 class FileSystemIsolation {
-  allowedPaths: string[];
-  blockedPaths: string[];
-  virtualFileSystem: Map<string, VirtualFile> = new Map();
-  sandboxFileSystems: Map<string, Map<string, VirtualFile>> = new Map();
-  maxFileSizeMB: number;
-  maxFiles: number;
+  private allowedPaths: string[];
+  private blockedPaths: string[];
+  private virtualFileSystem: Map<string, VirtualFile> = new Map();
+  private sandboxFileSystems: Map<string, Map<string, VirtualFile>> = new Map();
+  private maxFileSizeMB: number;
+  private maxFiles: number;
   private logger: Logger;
 
   constructor(config: {
@@ -694,8 +725,8 @@ class FileSystemIsolation {
   writeFile(sandboxId: string, path: string, content: string): boolean {
     let fs = this.sandboxFileSystems.get(sandboxId);
     if (!fs) {
-      fs = new Map<string, VirtualFile>();
-      this.sandboxFileSystems.set(sandboxId, fs);
+      this.sandboxFileSystems.set(sandboxId, new Map());
+      fs = this.sandboxFileSystems.get(sandboxId)!;
     }
 
     const size = Buffer.byteLength(content, 'utf8');
@@ -741,12 +772,12 @@ class FileSystemIsolation {
 // ============================================================================
 
 class NetworkIsolation {
-  allowedDomains: string[];
-  blockedDomains: string[];
-  allowedProtocols: string[];
-  blockedProtocols: string[];
-  requestCount: number = 0;
-  maxRequests: number;
+  private allowedDomains: string[];
+  private blockedDomains: string[];
+  private allowedProtocols: string[];
+  private blockedProtocols: string[];
+  private requestCount: number = 0;
+  private maxRequests: number;
   private logger: Logger;
 
   constructor(config: {
@@ -803,17 +834,13 @@ class NetworkIsolation {
 // ============================================================================
 
 class ApiRestrictions {
-  allowedApis: string[];
-  blockedApis: string[];
-  rateLimits: Map<string, RateLimit> = new Map();
-  permissionChecks: boolean;
+  private allowedApis: string[];
+  private blockedApis: string[];
+  private rateLimits: Map<string, RateLimit> = new Map();
+  private permissionChecks: boolean;
   private logger: Logger;
 
-  constructor(config: {
-    allowedApis: string[];
-    blockedApis: string[];
-    permissionChecks: boolean;
-  }, logger: Logger) {
+  constructor(config: ApiRestrictionsConfig, logger: Logger) {
     this.allowedApis = config.allowedApis;
     this.blockedApis = config.blockedApis;
     this.permissionChecks = config.permissionChecks;

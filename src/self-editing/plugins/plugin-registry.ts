@@ -1,6 +1,8 @@
 import { Logger } from '../../utils/logger';
 import { PluginError, ValidationError } from '../../utils/errors';
 import { PluginManifest } from './plugin-loader';
+import pacote from 'pacote';
+import fetch from 'node-fetch';
 
 /**
  * Plugin registry entry
@@ -209,7 +211,7 @@ export class PluginRegistry {
       this.logger.info(`Plugin registered successfully: ${manifest.id} v${manifest.version}`);
       return { success: true };
     } catch (error) {
-      this.logger.error(`Plugin registration failed for ${manifest.id}:`, error);
+      this.logger.error(`Plugin registration failed for ${manifest.id}:`, error as Error);
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
@@ -247,7 +249,7 @@ export class PluginRegistry {
       this.logger.info(`Plugin unregistered successfully: ${pluginId}`);
       return { success: true };
     } catch (error) {
-      this.logger.error(`Plugin unregistration failed for ${pluginId}:`, error);
+      this.logger.error(`Plugin unregistration failed for ${pluginId}:`, error as Error);
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
@@ -304,7 +306,7 @@ export class PluginRegistry {
       this.logger.info(`Plugin updated successfully: ${pluginId} v${manifest.version}`);
       return { success: true };
     } catch (error) {
-      this.logger.error(`Plugin update failed for ${pluginId}:`, error);
+      this.logger.error(`Plugin update failed for ${pluginId}:`, error as Error);
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
@@ -422,18 +424,22 @@ export class PluginRegistry {
       throw new PluginError(`Plugin not found: ${pluginId}`, 'PLUGIN_NOT_FOUND');
     }
 
-    const dependencies = [];
-    for (const dep of plugin.dependencies) {
-      const depPlugin = this.plugins.get(dep.name);
-      if (depPlugin) {
-        dependencies.push({
-          plugin: depPlugin,
-          dependencies: this.getDirectDependencies(dep.name)
-        });
+    const buildDependencyTree = (pluginId: string): { plugin: RegistryEntry; dependencies: any[] } => {
+      const plugin = this.plugins.get(pluginId);
+      if (!plugin) {
+        throw new PluginError(`Plugin not found: ${pluginId}`, 'PLUGIN_NOT_FOUND');
       }
-    }
+      const dependencies = [];
+      for (const dep of plugin.dependencies) {
+        const depPlugin = this.plugins.get(dep.name);
+        if (depPlugin) {
+          dependencies.push(buildDependencyTree(dep.name));
+        }
+      }
+      return { plugin, dependencies };
+    };
 
-    return { plugin, dependencies };
+    return buildDependencyTree(pluginId);
   }
 
   /**

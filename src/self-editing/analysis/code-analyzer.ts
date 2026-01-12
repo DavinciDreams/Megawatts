@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
-import { Logger } from '../../../utils/logger';
-import { BotError } from '../../../types';
+import { Logger } from '../../utils/logger';
+import { BotError } from '../../utils/errors';
 import {
   CodeAnalysis,
   AnalysisType,
@@ -10,8 +10,95 @@ import {
   RecommendationType,
   ImpactAssessment,
   RiskAssessment,
-  Evidence
-} from '../../../types/self-editing';
+  Evidence,
+  IssueType,
+  SuggestionType
+} from '../../types/self-editing';
+import { randomUUID } from 'crypto';
+
+/**
+ * Issue severity levels
+ */
+const ISSUE_SEVERITY = {
+  LOW: 'low',
+  MEDIUM: 'medium',
+  HIGH: 'high',
+  CRITICAL: 'critical'
+} as const;
+
+/**
+ * Complexity thresholds for analysis
+ */
+const COMPLEXITY_THRESHOLDS = {
+  CYCLOMATIC_COMPLEXITY: 10,
+  COGNITIVE_COMPLEXITY: 15,
+  MAINTAINABILITY_INDEX: 50,
+  TECHNICAL_DEBT_RATIO: 0.05
+} as const;
+
+/**
+ * Security thresholds
+ */
+const SECURITY_THRESHOLDS = {
+  RISK_SCORE_CRITICAL: 8,
+  RISK_SCORE_HIGH: 5,
+  COMPLIANCE_SCORE_MINIMUM: 70
+} as const;
+
+/**
+ * Performance thresholds
+ */
+const PERFORMANCE_THRESHOLDS = {
+  BOTTLENECK_COUNT_HIGH: 3,
+  OPTIMIZATION_OPPORTUNITY_THRESHOLD: 20
+} as const;
+
+/**
+ * Recommendation priority levels
+ */
+const RECOMMENDATION_PRIORITY = {
+  LOW: 'low',
+  MEDIUM: 'medium',
+  HIGH: 'high',
+  CRITICAL: 'critical'
+} as const;
+
+/**
+ * Analysis options interface
+ */
+interface AnalysisOptions {
+  analysisTypes?: AnalysisType[];
+  includeRecommendations?: boolean;
+  depth?: number;
+  excludePatterns?: string[];
+}
+
+/**
+ * Multiple analysis options interface
+ */
+interface MultipleAnalysisOptions extends AnalysisOptions {
+  parallel?: boolean;
+  maxConcurrency?: number;
+}
+
+/**
+ * Comparison result interface
+ */
+interface ComparisonResult {
+  improvements: string[];
+  regressions: string[];
+  unchanged: string[];
+}
+
+/**
+ * Analysis statistics interface
+ */
+interface AnalysisStatistics {
+  totalAnalyses: number;
+  averageConfidence: number;
+  commonIssues: string[];
+  mostAnalyzedFiles: string[];
+}
 
 /**
  * Main code analyzer that orchestrates all analysis operations
@@ -21,6 +108,16 @@ export class CodeAnalyzer extends EventEmitter {
   private analysisHistory: CodeAnalysis[] = [];
   private isAnalyzing = false;
 
+  /**
+   * Maximum history size to prevent memory issues
+   */
+  private static readonly MAX_HISTORY_SIZE = 1000;
+
+  /**
+   * Default concurrency for parallel analysis
+   */
+  private static readonly DEFAULT_CONCURRENCY = 3;
+
   constructor(logger: Logger) {
     super();
     this.logger = logger;
@@ -28,16 +125,16 @@ export class CodeAnalyzer extends EventEmitter {
 
   /**
    * Analyze code file or directory
+   * @param target - File or directory path to analyze
+   * @param options - Analysis configuration options
+   * @returns Promise resolving to analysis results
    */
   public async analyzeCode(
     target: string,
-    options: {
-      analysisTypes?: AnalysisType[];
-      includeRecommendations?: boolean;
-      depth?: number;
-      excludePatterns?: string[];
-    } = {}
+    options: AnalysisOptions = {}
   ): Promise<CodeAnalysis> {
+    this.validateTarget(target);
+    
     if (this.isAnalyzing) {
       throw new BotError('Analysis already in progress', 'medium');
     }
@@ -53,7 +150,7 @@ export class CodeAnalyzer extends EventEmitter {
         id: analysisId,
         timestamp: new Date(),
         filePath: target,
-        analysisType: AnalysisType.STATIC,
+        analysisType: options.analysisTypes?.[0] || AnalysisType.STATIC,
         results: await this.performAnalysis(target, options),
         confidence: 0.85,
         recommendations: []
@@ -64,7 +161,7 @@ export class CodeAnalyzer extends EventEmitter {
         analysis.recommendations = await this.generateRecommendations(analysis.results);
       }
 
-      this.analysisHistory.push(analysis);
+      this.addToHistory(analysis);
       this.isAnalyzing = false;
 
       this.logger.info(`Successfully completed analysis ${analysisId}`);
@@ -75,52 +172,44 @@ export class CodeAnalyzer extends EventEmitter {
       this.isAnalyzing = false;
       this.logger.error(`Analysis ${analysisId} failed:`, error);
       this.emit('analysisFailed', { analysisId, error });
-      throw new BotError(`Code analysis failed: ${error}`, 'medium');
+      throw new BotError(
+        `Code analysis failed: ${error instanceof Error ? error.message : String(error)}`,
+        'medium'
+      );
     }
   }
 
   /**
    * Analyze multiple targets
+   * @param targets - Array of file/directory paths to analyze
+   * @param options - Analysis configuration options
+   * @returns Promise resolving to array of analysis results
    */
   public async analyzeMultiple(
     targets: string[],
-    options: {
-      parallel?: boolean;
-      maxConcurrency?: number;
-    } = {}
+    options: MultipleAnalysisOptions = {}
   ): Promise<CodeAnalysis[]> {
+    this.validateTargets(targets);
+    
     this.logger.info(`Starting analysis of ${targets.length} targets`);
 
-    if (options.parallel !== false) {
-      // Parallel analysis
-      const concurrency = options.maxConcurrency || 3;
-      const chunks = this.chunkArray(targets, concurrency);
-      
-      const results: CodeAnalysis[][] = [];
-      
-      for (const chunk of chunks) {
-        const chunkResults = await Promise.all(
-          chunk.map(target => this.analyzeCode(target, options))
-        );
-        results.push(chunkResults);
-      }
-      
-      return results.flat();
+    const {
+      parallel,
+      maxConcurrency = CodeAnalyzer.DEFAULT_CONCURRENCY,
+      ...analysisOptions
+    } = options;
+
+    if (parallel !== false) {
+      return this.analyzeParallel(targets, maxConcurrency, analysisOptions);
     } else {
-      // Sequential analysis
-      const results: CodeAnalysis[] = [];
-      
-      for (const target of targets) {
-        const result = await this.analyzeCode(target, options);
-        results.push(result);
-      }
-      
-      return results;
+      return this.analyzeSequential(targets, analysisOptions);
     }
   }
 
   /**
    * Get analysis history
+   * @param limit - Maximum number of analyses to return
+   * @returns Array of analyses
    */
   public getAnalysisHistory(limit?: number): CodeAnalysis[] {
     if (limit) {
@@ -131,6 +220,8 @@ export class CodeAnalyzer extends EventEmitter {
 
   /**
    * Get analysis by ID
+   * @param analysisId - Unique identifier for the analysis
+   * @returns Analysis or null if not found
    */
   public getAnalysis(analysisId: string): CodeAnalysis | null {
     return this.analysisHistory.find(a => a.id === analysisId) || null;
@@ -138,15 +229,14 @@ export class CodeAnalyzer extends EventEmitter {
 
   /**
    * Compare two analyses
+   * @param analysisId1 - First analysis ID
+   * @param analysisId2 - Second analysis ID
+   * @returns Promise resolving to comparison results
    */
   public async compareAnalyses(
     analysisId1: string,
     analysisId2: string
-  ): Promise<{
-    improvements: string[];
-    regressions: string[];
-    unchanged: string[];
-  }> {
+  ): Promise<ComparisonResult> {
     const analysis1 = this.getAnalysis(analysisId1);
     const analysis2 = this.getAnalysis(analysisId2);
 
@@ -164,13 +254,9 @@ export class CodeAnalyzer extends EventEmitter {
 
   /**
    * Get analysis statistics
+   * @returns Statistics about all analyses
    */
-  public getAnalysisStatistics(): {
-    totalAnalyses: number;
-    averageConfidence: number;
-    commonIssues: string[];
-    mostAnalyzedFiles: string[];
-  } {
+  public getAnalysisStatistics(): AnalysisStatistics {
     if (this.analysisHistory.length === 0) {
       return {
         totalAnalyses: 0,
@@ -181,7 +267,10 @@ export class CodeAnalyzer extends EventEmitter {
     }
 
     const totalAnalyses = this.analysisHistory.length;
-    const averageConfidence = this.analysisHistory.reduce((sum, a) => sum + a.confidence, 0) / totalAnalyses;
+    const averageConfidence = this.analysisHistory.reduce(
+      (sum, a) => sum + a.confidence,
+      0
+    ) / totalAnalyses;
     
     // Mock statistics - would implement actual analysis
     return {
@@ -192,11 +281,108 @@ export class CodeAnalyzer extends EventEmitter {
     };
   }
 
+  /**
+   * Validate target path
+   * @param target - File or directory path
+   * @throws Error if target is invalid
+   */
+  private validateTarget(target: string): void {
+    if (!target || typeof target !== 'string' || target.trim().length === 0) {
+      throw new BotError('Invalid target: must be a non-empty string', 'medium');
+    }
+  }
+
+  /**
+   * Validate multiple targets
+   * @param targets - Array of file/directory paths
+   * @throws Error if targets are invalid
+   */
+  private validateTargets(targets: string[]): void {
+    if (!Array.isArray(targets) || targets.length === 0) {
+      throw new BotError('Invalid targets: must be a non-empty array', 'medium');
+    }
+    
+    targets.forEach(target => this.validateTarget(target));
+  }
+
+  /**
+   * Add analysis to history with size limit
+   * @param analysis - Analysis to add
+   */
+  private addToHistory(analysis: CodeAnalysis): void {
+    this.analysisHistory.push(analysis);
+    
+    // Prevent memory issues by limiting history size
+    if (this.analysisHistory.length > CodeAnalyzer.MAX_HISTORY_SIZE) {
+      this.analysisHistory.shift();
+    }
+  }
+
+  /**
+   * Perform analysis in parallel with concurrency control
+   * @param targets - Array of targets to analyze
+   * @param maxConcurrency - Maximum concurrent analyses
+   * @param options - Analysis options
+   * @returns Promise resolving to array of analyses
+   */
+  private async analyzeParallel(
+    targets: string[],
+    maxConcurrency: number,
+    options: AnalysisOptions
+  ): Promise<CodeAnalysis[]> {
+    const chunks = this.chunkArray(targets, maxConcurrency);
+    const results: CodeAnalysis[][] = [];
+    
+    for (const chunk of chunks) {
+      const chunkResults = await Promise.all(
+        chunk.map(target => this.analyzeCode(target, options))
+      );
+      results.push(chunkResults);
+    }
+    
+    return results.flat();
+  }
+
+  /**
+   * Perform analysis sequentially
+   * @param targets - Array of targets to analyze
+   * @param options - Analysis options
+   * @returns Promise resolving to array of analyses
+   */
+  private async analyzeSequential(
+    targets: string[],
+    options: AnalysisOptions
+  ): Promise<CodeAnalysis[]> {
+    const results: CodeAnalysis[] = [];
+    
+    for (const target of targets) {
+      const result = await this.analyzeCode(target, options);
+      results.push(result);
+    }
+    
+    return results;
+  }
+
+  /**
+   * Perform the actual code analysis
+   * @param target - File or directory to analyze
+   * @param options - Analysis options
+   * @returns Promise resolving to analysis results
+   */
   private async performAnalysis(
     target: string,
-    options: any
+    options: AnalysisOptions
   ): Promise<AnalysisResult> {
     // Mock analysis result - would implement actual analysis logic
+    return this.createMockAnalysisResult(target);
+  }
+
+  /**
+   * Create mock analysis result for development
+   * @param target - Target file path
+   * @returns Mock analysis result
+   */
+  private createMockAnalysisResult(target: string): AnalysisResult {
     return {
       complexity: {
         cyclomaticComplexity: 15,
@@ -226,15 +412,10 @@ export class CodeAnalyzer extends EventEmitter {
         vulnerabilities: [
           {
             id: 'vuln_001',
-            severity: 'medium',
+            severity: ISSUE_SEVERITY.MEDIUM,
             type: 'SQL Injection',
             description: 'Potential SQL injection vulnerability',
-            location: {
-              file: target,
-              line: 45,
-              column: 12,
-              function: 'processUserData'
-            },
+            location: this.createCodeLocation(target, 45, 12, 'processUserData'),
             recommendation: 'Use parameterized queries',
             cve: 'CVE-2023-1234'
           }
@@ -244,13 +425,8 @@ export class CodeAnalyzer extends EventEmitter {
         sensitiveData: [
           {
             type: 'API Key',
-            location: {
-              file: target,
-              line: 10,
-              column: 5,
-              function: 'initializeAPI'
-            },
-            risk: 'high',
+            location: this.createCodeLocation(target, 10, 5, 'initializeAPI'),
+            risk: ISSUE_SEVERITY.HIGH,
             recommendation: 'Use environment variables for sensitive data'
           }
         ]
@@ -261,13 +437,8 @@ export class CodeAnalyzer extends EventEmitter {
         bottlenecks: [
           {
             type: 'Database Query',
-            location: {
-              file: target,
-              line: 78,
-              column: 8,
-              function: 'fetchUserData'
-            },
-            impact: 'high',
+            location: this.createCodeLocation(target, 78, 8, 'fetchUserData'),
+            impact: ISSUE_SEVERITY.HIGH,
             description: 'Inefficient database query causing slowdown',
             suggestion: 'Add database indexes and optimize query'
           }
@@ -275,12 +446,7 @@ export class CodeAnalyzer extends EventEmitter {
         optimizationOpportunities: [
           {
             type: 'Caching',
-            location: {
-              file: target,
-              line: 25,
-              column: 15,
-              function: 'getUserProfile'
-            },
+            location: this.createCodeLocation(target, 25, 15, 'getUserProfile'),
             expectedImprovement: 40,
             description: 'Implement caching for user profile data',
             implementation: 'Add Redis cache with 5-minute TTL'
@@ -309,7 +475,7 @@ export class CodeAnalyzer extends EventEmitter {
         circularDependencies: [
           {
             files: ['file1.ts', 'file2.ts', 'file1.ts'],
-            severity: 'medium',
+            severity: ISSUE_SEVERITY.MEDIUM,
             description: 'Circular dependency between file1 and file2'
           }
         ],
@@ -326,15 +492,10 @@ export class CodeAnalyzer extends EventEmitter {
       },
       issues: [
         {
-          id: 'issue_001',
-          type: 'code_smell',
-          severity: 'medium',
-          location: {
-            file: target,
-            line: 120,
-            column: 10,
-            function: 'processLargeDataset'
-          },
+          id: this.generateId(),
+          type: IssueType.CODE_SMELL,
+          severity: ISSUE_SEVERITY.MEDIUM,
+          location: this.createCodeLocation(target, 120, 10, 'processLargeDataset'),
           message: 'Function too complex - consider refactoring',
           suggestion: 'Break down into smaller functions',
           autoFixable: false
@@ -342,108 +503,192 @@ export class CodeAnalyzer extends EventEmitter {
       ],
       suggestions: [
         {
-          id: 'suggestion_001',
-          type: 'refactoring',
-          priority: 'high',
-          location: {
-            file: target,
-            line: 120,
-            column: 10,
-            function: 'processLargeDataset'
-          },
+          id: this.generateId(),
+          type: SuggestionType.REFACTORING,
+          priority: RECOMMENDATION_PRIORITY.HIGH,
+          location: this.createCodeLocation(target, 120, 10, 'processLargeDataset'),
           description: 'Refactor complex function for better maintainability',
           implementation: 'Extract logic into separate helper functions',
           expectedBenefit: 'Improved maintainability and testability',
-          risk: 'low'
+          risk: ISSUE_SEVERITY.LOW
         }
       ]
     };
   }
 
-  private async generateRecommendations(results: AnalysisResult): Promise<Recommendation[]> {
+  /**
+   * Create a code location object
+   * @param file - File path
+   * @param line - Line number
+   * @param column - Column number
+   * @param function - Function name
+   * @returns Code location object
+   */
+  private createCodeLocation(
+    file: string,
+    line: number,
+    column: number,
+    func: string
+  ): CodeLocation {
+    return {
+      file,
+      line,
+      column,
+      function: func
+    };
+  }
+
+  /**
+   * Generate recommendations based on analysis results
+   * @param results - Analysis results
+   * @returns Promise resolving to array of recommendations
+   */
+  private async generateRecommendations(
+    results: AnalysisResult
+  ): Promise<Recommendation[]> {
     const recommendations: Recommendation[] = [];
 
-    // Generate recommendations based on complexity
-    if (results.complexity.cyclomaticComplexity > 10) {
-      recommendations.push({
-        id: this.generateId(),
-        type: RecommendationType.CODE_REFACTORING,
-        priority: 'high',
-        description: 'High cyclomatic complexity detected',
-        rationale: `Complexity of ${results.complexity.cyclomaticComplexity} exceeds recommended threshold of 10`,
-        implementation: 'Refactor complex functions into smaller, more focused functions',
-        expectedImpact: {
-          performance: 0.2,
-          security: 0.1,
-          maintainability: 0.8,
-          userExperience: 0.3,
-          overall: 0.5
-        },
-        risk: {
-          complexity: 'medium',
-          breakingChanges: false,
-          testingRequired: true,
-          rollbackComplexity: 'simple',
-          confidence: 0.9
-        }
-      });
-    }
-
-    // Generate recommendations based on security
-    if (results.security.riskScore > 5) {
-      recommendations.push({
-        id: this.generateId(),
-        type: RecommendationType.SECURITY_IMPROVEMENT,
-        priority: 'critical',
-        description: 'Security vulnerabilities detected',
-        rationale: `Risk score of ${results.security.riskScore} indicates security issues`,
-        implementation: 'Address all identified security vulnerabilities',
-        expectedImpact: {
-          performance: -0.1,
-          security: 0.9,
-          maintainability: 0.2,
-          userExperience: 0.1,
-          overall: 0.6
-        },
-        risk: {
-          complexity: 'high',
-          breakingChanges: true,
-          testingRequired: true,
-          rollbackComplexity: 'moderate',
-          confidence: 0.8
-        }
-      });
-    }
-
-    // Generate recommendations based on performance
-    if (results.performance.bottlenecks.length > 0) {
-      recommendations.push({
-        id: this.generateId(),
-        type: RecommendationType.PERFORMANCE_OPTIMIZATION,
-        priority: 'medium',
-        description: 'Performance bottlenecks identified',
-        rationale: `${results.performance.bottlenecks.length} bottlenecks found`,
-        implementation: 'Optimize identified performance bottlenecks',
-        expectedImpact: {
-          performance: 0.7,
-          security: 0.0,
-          maintainability: 0.1,
-          userExperience: 0.6,
-          overall: 0.5
-        },
-        risk: {
-          complexity: 'medium',
-          breakingChanges: false,
-          testingRequired: true,
-          rollbackComplexity: 'simple',
-          confidence: 0.85
-        }
-      });
-    }
+    // Check complexity
+    this.addComplexityRecommendations(results, recommendations);
+    
+    // Check security
+    this.addSecurityRecommendations(results, recommendations);
+    
+    // Check performance
+    this.addPerformanceRecommendations(results, recommendations);
 
     return recommendations;
   }
 
+  /**
+   * Add complexity-based recommendations
+   * @param results - Analysis results
+   * @param recommendations - Array to add recommendations to
+   */
+  private addComplexityRecommendations(
+    results: AnalysisResult,
+    recommendations: Recommendation[]
+  ): void {
+    if (results.complexity.cyclomaticComplexity > COMPLEXITY_THRESHOLDS.CYCLOMATIC_COMPLEXITY) {
+      recommendations.push({
+        id: this.generateId(),
+        type: RecommendationType.CODE_REFACTORING,
+        priority: RECOMMENDATION_PRIORITY.HIGH,
+        description: 'High cyclomatic complexity detected',
+        rationale: `Complexity of ${results.complexity.cyclomaticComplexity} exceeds recommended threshold of ${COMPLEXITY_THRESHOLDS.CYCLOMATIC_COMPLEXITY}`,
+        implementation: 'Refactor complex functions into smaller, more focused functions',
+        expectedImpact: this.createImpactAssessment(0.2, 0.1, 0.8, 0.3),
+        risk: this.createRiskAssessment('medium', false, true, 'simple', 0.9)
+      });
+    }
+  }
+
+  /**
+   * Add security-based recommendations
+   * @param results - Analysis results
+   * @param recommendations - Array to add recommendations to
+   */
+  private addSecurityRecommendations(
+    results: AnalysisResult,
+    recommendations: Recommendation[]
+  ): void {
+    if (results.security.riskScore > SECURITY_THRESHOLDS.RISK_SCORE_HIGH) {
+      const priority = results.security.riskScore > SECURITY_THRESHOLDS.RISK_SCORE_CRITICAL
+        ? RECOMMENDATION_PRIORITY.CRITICAL
+        : RECOMMENDATION_PRIORITY.HIGH;
+
+      recommendations.push({
+        id: this.generateId(),
+        type: RecommendationType.SECURITY_IMPROVEMENT,
+        priority,
+        description: 'Security vulnerabilities detected',
+        rationale: `Risk score of ${results.security.riskScore} indicates security issues`,
+        implementation: 'Address all identified security vulnerabilities',
+        expectedImpact: this.createImpactAssessment(-0.1, 0.9, 0.2, 0.1),
+        risk: this.createRiskAssessment('high', true, true, 'moderate', 0.8)
+      });
+    }
+  }
+
+  /**
+   * Add performance-based recommendations
+   * @param results - Analysis results
+   * @param recommendations - Array to add recommendations to
+   */
+  private addPerformanceRecommendations(
+    results: AnalysisResult,
+    recommendations: Recommendation[]
+  ): void {
+    if (results.performance.bottlenecks.length > 0) {
+      recommendations.push({
+        id: this.generateId(),
+        type: RecommendationType.PERFORMANCE_OPTIMIZATION,
+        priority: RECOMMENDATION_PRIORITY.MEDIUM,
+        description: 'Performance bottlenecks identified',
+        rationale: `${results.performance.bottlenecks.length} bottlenecks found`,
+        implementation: 'Optimize identified performance bottlenecks',
+        expectedImpact: this.createImpactAssessment(0.7, 0.0, 0.1, 0.6),
+        risk: this.createRiskAssessment('medium', false, true, 'simple', 0.85)
+      });
+    }
+  }
+
+  /**
+   * Create an impact assessment object
+   * @param performance - Performance impact (-1 to 1)
+   * @param security - Security impact (-1 to 1)
+   * @param maintainability - Maintainability impact (-1 to 1)
+   * @param userExperience - User experience impact (-1 to 1)
+   * @returns Impact assessment object
+   */
+  private createImpactAssessment(
+    performance: number,
+    security: number,
+    maintainability: number,
+    userExperience: number
+  ): ImpactAssessment {
+    const overall = (performance + security + maintainability + userExperience) / 4;
+    
+    return {
+      performance,
+      security,
+      maintainability,
+      userExperience,
+      overall
+    };
+  }
+
+  /**
+   * Create a risk assessment object
+   * @param complexity - Complexity level
+   * @param breakingChanges - Whether breaking changes are expected
+   * @param testingRequired - Whether testing is required
+   * @param rollbackComplexity - Rollback complexity level
+   * @param confidence - Confidence level (0 to 1)
+   * @returns Risk assessment object
+   */
+  private createRiskAssessment(
+    complexity: 'low' | 'medium' | 'high',
+    breakingChanges: boolean,
+    testingRequired: boolean,
+    rollbackComplexity: 'simple' | 'moderate' | 'complex',
+    confidence: number
+  ): RiskAssessment {
+    return {
+      complexity,
+      breakingChanges,
+      testingRequired,
+      rollbackComplexity,
+      confidence
+    };
+  }
+
+  /**
+   * Chunk array into smaller arrays
+   * @param array - Array to chunk
+   * @param chunkSize - Size of each chunk
+   * @returns Array of chunked arrays
+   */
   private chunkArray<T>(array: T[], chunkSize: number): T[][] {
     const chunks: T[][] = [];
     for (let i = 0; i < array.length; i += chunkSize) {
@@ -452,11 +697,19 @@ export class CodeAnalyzer extends EventEmitter {
     return chunks;
   }
 
+  /**
+   * Generate a unique analysis ID
+   * @returns Unique analysis identifier
+   */
   private generateAnalysisId(): string {
-    return `analysis_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `analysis_${randomUUID()}`;
   }
 
+  /**
+   * Generate a unique ID
+   * @returns Unique identifier
+   */
   private generateId(): string {
-    return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return randomUUID();
   }
 }

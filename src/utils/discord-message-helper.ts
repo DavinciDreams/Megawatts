@@ -288,6 +288,17 @@ export async function sendLongReply(
 ): Promise<LongMessageResult> {
   const opts = { ...DEFAULT_OPTIONS, ...options };
 
+  // Guard clause: Validate content is not empty or whitespace-only
+  // Discord API rejects empty messages with error 50006
+  if (!content || content.trim().length === 0) {
+    opts.logger?.warn('Attempted to send empty message - skipping to prevent Discord API error 50006');
+    return {
+      messageCount: 0,
+      messageIds: [],
+      wasTruncated: false,
+    };
+  }
+
   if (content.length <= MAX_USABLE_LENGTH) {
     // Message fits, send directly
     const reply = await message.reply(content);

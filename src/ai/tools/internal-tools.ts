@@ -151,7 +151,7 @@ export class InternalAIToolsExecutor {
 
       // Apply modifications
       for (const mod of options.modifications) {
-        this.logger.info(`Applying modification at line ${mod.line}`, mod.content);
+        this.logger.info(`Applying modification at line ${mod.line}`, { content: mod.content });
         
         if (options.validateSyntax) {
           // Syntax validation logic would go here

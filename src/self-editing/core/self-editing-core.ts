@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { Logger } from '../../utils/logger.js';
-import { BotError, SelfEditingError } from '../../types.js';
+import { BotError } from '../../core/errors/bot-error.js';
+import { SelfEditingError } from '../../core/errors/self-editing-error.js';
 import {
   SelfEditingConfig,
   SelfEditingEvent,
@@ -51,7 +52,7 @@ export class SelfEditingCore extends EventEmitter {
       
       this.logger.info('Self-Editing Core initialized successfully');
     } catch (error) {
-      this.logger.error('Failed to initialize Self-Editing Core:', error);
+      this.logger.error('Failed to initialize Self-Editing Core:', error instanceof Error ? error : new Error(String(error)));
       throw new SelfEditingError(
         'Self-Editing Core initialization failed',
         'critical',
@@ -85,7 +86,7 @@ export class SelfEditingCore extends EventEmitter {
       this.emitEvent(SelfEditingEventType.MODIFICATION_COMPLETED, { timestamp: new Date() });
       this.logger.info('Self-Editing Engine started successfully');
     } catch (error) {
-      this.logger.error('Failed to start Self-Editing Engine:', error);
+      this.logger.error('Failed to start Self-Editing Engine:', error as Error);
       throw new SelfEditingError(
         'Self-Editing Engine start failed',
         'high',
@@ -120,7 +121,7 @@ export class SelfEditingCore extends EventEmitter {
       
       this.logger.info('Self-Editing Engine stopped successfully');
     } catch (error) {
-      this.logger.error('Error stopping Self-Editing Engine:', error);
+      this.logger.error('Error stopping Self-Editing Engine:', error as Error);
       throw new SelfEditingError(
         'Self-Editing Engine stop failed',
         'medium',
@@ -300,7 +301,7 @@ export class SelfEditingCore extends EventEmitter {
 
       return healthCheck;
     } catch (error) {
-      this.logger.error('Health check failed:', error);
+      this.logger.error('Health check failed:', error as Error);
       healthCheck.status = 'critical';
       healthCheck.overallScore = 0;
       healthCheck.recommendations = ['Retry health check', 'Check system logs'];
@@ -359,7 +360,7 @@ export class SelfEditingCore extends EventEmitter {
 
   private setupEventHandlers(): void {
     this.on('error', (error: Error) => {
-      this.logger.error('Self-Editing Core error:', error);
+      this.logger.error('Self-Editing Core error:', error as Error);
     });
 
     this.on('warning', (warning: any) => {

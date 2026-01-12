@@ -5,15 +5,15 @@
  * for the AI system, including static code analysis and security scanning.
  */
 
-import { 
-  SafetyAnalysis, 
-  SafetyLevel, 
-  SafetyCategory, 
-  SafetyType, 
+import {
+  SafetyAnalysis,
+  SafetyLevel,
+  SafetyCategory,
+  SafetyType,
   SafetyRecommendation,
   ModerationAction
-} from '../../../types/ai';
-import { Logger } from '../../../utils/logger';
+} from '../../types/ai';
+import { Logger } from '../../utils/logger';
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -384,7 +384,18 @@ export class SafetyAnalyzer {
       blockedContent: 0,
       flaggedContent: 0,
       safeContent: 0,
-      categoryBreakdown: {},
+      categoryBreakdown: {
+        toxicity: 0,
+        violence: 0,
+        self_harm: 0,
+        sexual_content: 0,
+        hate_speech: 0,
+        misinformation: 0,
+        spam: 0,
+        personal_info: 0,
+        copyright: 0,
+        security: 0
+      },
       averageProcessingTime: 0,
       mostCommonIssues: []
     };
@@ -880,7 +891,19 @@ export class SafetyAnalyzer {
    * Initialize safety rules
    */
   private initializeSafetyRules(): void {
-    for (const type of Object.values(SafetyType)) {
+    const safetyTypes: SafetyType[] = [
+      'toxicity',
+      'violence',
+      'self_harm',
+      'sexual_content',
+      'hate_speech',
+      'misinformation',
+      'spam',
+      'personal_info',
+      'copyright',
+      'security'
+    ];
+    for (const type of safetyTypes) {
       this.safetyRules.set(type, []);
     }
   }

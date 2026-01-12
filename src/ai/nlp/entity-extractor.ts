@@ -11,8 +11,8 @@ import {
   EntityMetadata,
   ConversationContext,
   UserPreferences
-} from '../../../types/ai';
-import { Logger } from '../../../utils/logger';
+} from '../../types/ai';
+import { Logger } from '../../utils/logger';
 
 // ============================================================================
 // ENTITY EXTRACTOR CLASS

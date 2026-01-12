@@ -1,4 +1,4 @@
-const { HealthManager } = require('./core/health');
+const { HealthManager } = require('../core/health');
 const express = require('express');
 
 async function testHealthIntegration() {

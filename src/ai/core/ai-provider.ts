@@ -58,14 +58,14 @@ export abstract class BaseAIProvider {
     return true;
   }
 
-  protected createError(message: string, code: string, details?: any): AIError {
+  protected createError(message: string, code: string, details?: any, recoverable: boolean = true): AIError {
     return {
       type: 'provider_error',
       code,
       message,
       details,
       timestamp: new Date(),
-      recoverable: true
+      recoverable
     };
   }
 }
@@ -211,7 +211,25 @@ export class OpenAIProvider extends BaseAIProvider {
 
       if (!response.ok) {
         const error = await response.json();
-        throw this.createError(error.error?.message || 'Request failed', 'api_error', error);
+        const errorCode = error.error?.code || '';
+        const errorMessage = error.error?.message || 'Request failed';
+        
+        // Check for quota errors - these are not recoverable and should not be retried
+        const isQuotaError =
+          errorCode === 'insufficient_quota' ||
+          errorCode === 'quota_exceeded' ||
+          errorMessage.toLowerCase().includes('exceeded your current quota');
+        
+        if (isQuotaError) {
+          this.logger.error('OpenAI quota error detected - request will not be retried', new Error(errorMessage), {
+            errorCode,
+            errorMessage,
+            recoverable: false
+          });
+          throw this.createError(errorMessage, errorCode || 'quota_error', error, false);
+        }
+        
+        throw this.createError(errorMessage, 'api_error', error);
       }
 
       const data = await response.json();
@@ -517,9 +535,37 @@ export class AnthropicProvider extends BaseAIProvider {
       temperature: request.temperature,
       top_p: request.topP,
       ...(request.tools && { tools: this.convertToolsToAnthropicFormat(request.tools) }),
-      ...(request.tool_choice && { tool_choice: request.tool_choice }),
       stream: false
     };
+    
+    // Handle tool_choice format - Anthropic requires object format, not string
+    if (request.tool_choice) {
+      if (typeof request.tool_choice === 'string') {
+        // Anthropic expects {type: "auto"} instead of "auto"
+        const toolChoiceMap: Record<string, string> = {
+          'auto': 'auto',
+          'required': 'any',
+          'none': 'none'
+        };
+        
+        const anthropicType = toolChoiceMap[request.tool_choice] || 'auto';
+        requestBody.tool_choice = { type: anthropicType };
+        
+        this.logger.debug('[TOOL_CHOICE] Converted tool_choice for Anthropic model', {
+          model: request.model,
+          original: request.tool_choice,
+          converted: requestBody.tool_choice
+        });
+      } else {
+        // Already in object format, use as-is
+        requestBody.tool_choice = request.tool_choice;
+        
+        this.logger.debug('[TOOL_CHOICE] Using object format for Anthropic', {
+          model: request.model,
+          tool_choice: requestBody.tool_choice
+        });
+      }
+    }
     
     // Add system parameter if there are system messages
     if (systemMessages) {

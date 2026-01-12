@@ -599,10 +599,8 @@ export class ValidationPipeline {
     } catch (error) {
       const duration = Date.now() - stageStartTime;
       
-      this.logger.error(`Stage failed: ${stage}`, {
-        error: error as Error,
-        duration
-      });
+      this.logger.error(`Stage failed: ${stage} (${(error as Error).message})`, error as Error);
+      this.logger.debug(`Stage duration for failed stage: ${stage}`, { duration });
       
       return {
         stage,

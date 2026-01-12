@@ -1,6 +1,6 @@
-import { Logger } from '../../../utils/logger';
-import { BotError } from '../../../types';
-import { CodeLocation } from '../../../types/self-editing';
+import { Logger } from '../../utils/logger';
+import { BotError } from '../../utils/errors';
+import { CodeLocation } from '../../types/self-editing';
 
 /**
  * AST Parser for TypeScript/JavaScript code analysis
