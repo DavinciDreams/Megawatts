@@ -12,6 +12,8 @@ import { Logger, LogLevel } from '../../utils/logger';
 import { BotError, AIError } from '../../utils/errors';
 import { AISDKAdapter, AIAdapterConfig } from '../sdk/ai-sdk-adapter';
 
+export { ToolExecutionResult };
+
 // ============================================================================
 // TYPE DEFINITIONS
 // ============================================================================

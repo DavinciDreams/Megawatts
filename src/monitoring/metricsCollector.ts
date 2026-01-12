@@ -14,7 +14,6 @@
 import { Counter, Gauge, Histogram, Summary, Registry, collectDefaultMetrics } from 'prom-client';
 import { Logger } from '../utils/logger';
 import { BotError } from '../utils/errors';
-import { execSync } from 'child_process';
 
 /**
  * Metric types supported by the collector
@@ -537,26 +536,6 @@ export class MetricsCollector {
       this.cpuUsageGauge.set({ type: 'user', core: 'total' }, cpuUsage.user);
       this.cpuUsageGauge.set({ type: 'system', core: 'total' }, cpuUsage.system);
 
-      // Disk metrics
-      try {
-        const result = execSync('df -h .', { encoding: 'utf8' });
-        const lines = result.trim().split('\n');
-        
-        if (lines.length >= 2) {
-          const usageLine = lines[1];
-          const match = usageLine.match(/(\d+)%/);
-          if (match) {
-            const diskUsagePercent = parseInt(match[1], 10);
-            // Set disk usage gauge with percentage as value
-            this.diskUsageGauge.set({ type: 'usage', mount: '/' }, diskUsagePercent);
-          }
-        }
-      } catch (diskError) {
-        // If df command fails, set to 0 and log warning
-        this.logger.warn('Failed to execute df command for disk metrics', diskError as Error);
-        this.diskUsageGauge.set({ type: 'usage', mount: '/' }, 0);
-      }
-
       this.logger.debug('Performance metrics collected');
     } catch (error) {
       this.logger.error('Error collecting performance metrics', error);
@@ -831,8 +810,11 @@ export class MetricsCollector {
     const activeUsersMetric = await this.activeUsersGauge.get();
     const getValue = (metric: any, labels: Record<string, string>): number => {
       const values = metric.values || [];
-      const match = values.find((val: any) => {
-        return Object.entries(labels).every(([k, v]) => val.labels?.[k] === v);
+      const match = values.find((v: any) => {
+        if (typeof v === 'string') {
+          return Object.entries(labels).every(([k, val]) => val === v);
+        }
+        return Object.entries(labels).every(([k, val]) => v && typeof v === 'object' && (v as any).metric?.[k] === val);
       });
       return match?.value || 0;
     };

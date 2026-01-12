@@ -3,7 +3,6 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-import * as path from 'path';
 import { HealthManager } from './core/health/index';
 import { Logger as UtilsLogger } from './utils/logger';
 import { MessageRouter } from './core/processing/messageRouter';
@@ -13,6 +12,7 @@ import { DistributedLock } from './utils/distributed-lock';
 import { ConversationalDiscordConfig } from './types/conversational';
 import { conversationalConfigManager } from './config/conversationalConfigManager';
 import { aiSDKConfigManager } from './config/ai-sdk-config';
+import { type AIAdapterConfig } from './ai/sdk/ai-sdk-adapter';
 import {
   createDiscordBotIntegration,
   DiscordBotIntegration,
@@ -25,11 +25,6 @@ import { TieredStorageManager } from './storage/tiered/tieredStorage';
 import { ToolRegistry, ToolRegistryConfig } from './ai/tools/tool-registry';
 import { AISDKAdapter } from './ai/sdk/ai-sdk-adapter';
 import { sendLongReply } from './utils/discord-message-helper';
-// Self-editing imports
-import { SelfEditingEngine } from './self-editing/engine';
-import { SelfEditingCore } from './self-editing/core/self-editing-core';
-import { ModificationOrchestrator } from './self-editing/core/modification-orchestrator';
-import { SelfEditingConfig } from './types/index';
 
 // Load environment variables FIRST
 dotenv.config();
@@ -220,9 +215,6 @@ class SelfEditingDiscordBot {
   // Local deduplication set to prevent duplicate responses within single instance
   private processedMessages: Set<string> = new Set();
   private isProcessing: Map<string, boolean> = new Map();
-  // Self-editing components (for debugging)
-  private selfEditingEngine: any = null;
-  private selfEditingCore: any = null;
 
   constructor(
     private token: string,
@@ -235,157 +227,6 @@ class SelfEditingDiscordBot {
     this.healthManager = new HealthManager();
     this.healthServer = new HealthServer(this.healthManager, this.config);
     this.messageRouter = new MessageRouter(DEFAULT_PIPELINE_CONFIG);
-    
-    // DIAGNOSTIC LOG: Check if self-editing is enabled
-    console.log('[DEBUG-SELF-EDITING] ENABLE_SELF_EDITING env var:', process.env.ENABLE_SELF_EDITING);
-    
-    // Initialize self-editing components if enabled
-    const selfEditingEnabled = process.env.ENABLE_SELF_EDITING === 'true';
-    console.log('[DEBUG-SELF-EDITING] Self-editing enabled:', selfEditingEnabled);
-    
-    if (selfEditingEnabled) {
-      const selfEditingConfig: SelfEditingConfig = {
-        enabled: true,
-        interval: parseInt(process.env.SELF_EDITING_INTERVAL || '60'),
-        safety: {
-          enabled: true,
-          validationLevel: (process.env.SELF_EDITING_VALIDATION_LEVEL as any) || 'moderate',
-          rollbackEnabled: true,
-          sandboxEnabled: true,
-          maxModificationsPerSession: parseInt(process.env.SELF_EDITING_MAX_MODIFICATIONS || '10'),
-          criticalSystemsProtected: ['core', 'security', 'authentication'],
-          approvalRequired: false,
-          securityScanning: true,
-          performanceThresholds: {
-            maxResponseTimeIncrease: 20,
-            maxMemoryUsageIncrease: 30,
-            maxCPUUsageIncrease: 30,
-            maxErrorRateIncrease: 10,
-            minTestCoverage: 70,
-            maxComplexityIncrease: 5
-          }
-        },
-        learning: {
-          enabled: true,
-          adaptationRate: 0.5,
-          maxChangesPerSession: parseInt(process.env.SELF_EDITING_MAX_CHANGES || '5'),
-          learningAlgorithm: 'reinforcement',
-          feedbackWeight: 0.4,
-          performanceWeight: 0.3,
-          userBehaviorWeight: 0.3,
-          historicalDataRetention: parseInt(process.env.SELF_EDITING_DATA_RETENTION || '30'),
-          modelUpdateInterval: parseInt(process.env.SELF_EDITING_MODEL_UPDATE_INTERVAL || '24')
-        },
-        modification: {
-          enabled: true,
-          hotReloadEnabled: false,
-          backupEnabled: true,
-          versionControl: {
-            enabled: true,
-            autoCommit: false,
-            branchStrategy: 'feature',
-            taggingEnabled: true,
-            maxVersionsRetained: parseInt(process.env.SELF_EDITING_MAX_VERSIONS || '10')
-          },
-          codeAnalysis: {
-            staticAnalysis: true,
-            dynamicAnalysis: true,
-            securityScanning: true,
-            performanceAnalysis: true,
-            complexityAnalysis: true,
-            dependencyAnalysis: true,
-            qualityMetrics: true
-          },
-          transformation: {
-            maxComplexity: 50,
-            preserveComments: true,
-            preserveFormatting: true,
-            validateSyntax: true,
-            generateTests: true,
-            updateDocumentation: true
-          }
-        },
-        monitoring: {
-          enabled: true,
-          realTimeMonitoring: true,
-          performanceTracking: true,
-          anomalyDetection: true,
-          successRateTracking: true,
-          impactAnalysis: true,
-          alerting: {
-            enabled: true,
-            channels: [],
-            severity: 'medium',
-            thresholds: {
-              failureRate: 0.1,
-              performanceDegradation: 20,
-              errorCount: 10,
-              resourceUsage: 80
-            }
-          },
-          metrics: {
-            collectPerformanceMetrics: true,
-            collectUserMetrics: true,
-            collectSystemMetrics: true,
-            collectModificationMetrics: true,
-            collectLearningMetrics: true,
-            retentionPeriod: parseInt(process.env.SELF_EDITING_METRICS_RETENTION || '90')
-          }
-        },
-        plugins: {
-          enabled: true,
-          autoDiscovery: true,
-          sandboxing: true,
-          dependencyManagement: true,
-          versioning: true,
-          marketplace: {
-            enabled: true,
-            trustedSources: ['npmjs.org'],
-            autoUpdate: false,
-            securityScanning: true,
-            communityVoting: false
-          }
-        },
-        meta: {
-          enabled: true,
-          selfAwareness: true,
-          capabilityDiscovery: true,
-          knowledgeRepresentation: true,
-          learningStrategyOptimization: true,
-          introspectionInterval: parseInt(process.env.SELF_EDITING_INTROSPECTION_INTERVAL || '6')
-        },
-        userFeedback: {
-          enabled: true,
-          minInteractions: parseInt(process.env.SELF_EDITING_MIN_INTERACTIONS || '50'),
-          collectionMethod: 'all',
-          analysisInterval: parseInt(process.env.SELF_EDITING_FEEDBACK_INTERVAL || '24')
-        },
-        codeQuality: {
-          enabled: true,
-          analysisTools: [],
-          complexityThreshold: parseInt(process.env.SELF_EDITING_COMPLEXITY_THRESHOLD || '20'),
-          coverageThreshold: parseInt(process.env.SELF_EDITING_COVERAGE_THRESHOLD || '70'),
-          autoFix: false
-        },
-        performance: {
-          enabled: true,
-          thresholds: {
-            responseTime: parseInt(process.env.SELF_EDITING_RESPONSE_TIME || '1000'),
-            errorRate: parseFloat(process.env.SELF_EDITING_ERROR_RATE || '0.05'),
-            memoryUsage: parseInt(process.env.SELF_EDITING_MEMORY_USAGE || '200'),
-            cpuUsage: parseInt(process.env.SELF_EDITING_CPU_USAGE || '80')
-          },
-          monitoringInterval: parseInt(process.env.SELF_EDITING_MONITORING_INTERVAL || '5')
-        }
-      };
-      
-      this.selfEditingEngine = new SelfEditingEngine(selfEditingConfig, this.logger);
-      this.selfEditingCore = new SelfEditingCore(selfEditingConfig, this.logger);
-      console.log('[DEBUG-SELF-EDITING] SelfEditingEngine initialized:', !!this.selfEditingEngine);
-      console.log('[DEBUG-SELF-EDITING] SelfEditingCore initialized:', !!this.selfEditingCore);
-    } else {
-      console.log('[DEBUG-SELF-EDITING] Self-editing disabled - components not initialized');
-    }
     
     // Initialize Redis connection
     const redisConfig: any = {
@@ -412,12 +253,6 @@ class SelfEditingDiscordBot {
       console.log('[DEBUG-INIT] conversationalDiscordConfig in initialize():', this.conversationalDiscordConfig);
       console.log('[DEBUG-INIT] conversationalDiscordConfig?.enabled:', this.conversationalDiscordConfig?.enabled);
       
-      // Initialize self-editing core if enabled
-      if (this.selfEditingCore) {
-        await this.selfEditingCore.initialize();
-        console.log('[DEBUG-INIT] Self-editing core initialized');
-      }
-      
       // Initialize Redis connection first
       await this.redis.connect();
       this.logger.info('Redis connection established');
@@ -435,10 +270,7 @@ class SelfEditingDiscordBot {
         intents: [
           GatewayIntentBits.Guilds,
           GatewayIntentBits.GuildMessages,
-          GatewayIntentBits.MessageContent,
-          GatewayIntentBits.GuildMembers,
-          GatewayIntentBits.GuildMessageReactions,
-          GatewayIntentBits.GuildPresences
+          GatewayIntentBits.MessageContent
         ],
         presence: {
           status: 'online',
@@ -446,10 +278,17 @@ class SelfEditingDiscordBot {
         },
       });
 
-      this.client.on('ready', () => {
+      this.client.on('clientReady', () => {
         this.logger.info('Bot client is ready and online!');
         this.isReady = true;
         // Update health manager with Discord client status
+        this.updateDiscordHealthStatus(true);
+      });
+
+      // Backward compatibility for deprecated ready event
+      this.client.on('ready', () => {
+        this.logger.warn('Using deprecated ready event. Please migrate to clientReady event.');
+        this.isReady = true;
         this.updateDiscordHealthStatus(true);
       });
 
@@ -545,6 +384,7 @@ class SelfEditingDiscordBot {
             enabled: true,
             retentionDays: conversationalDiscordConfig.memory.longTermRetentionDays,
             compressionEnabled: true,
+            useS3: false,
           },
           backup: {
             enabled: false,
@@ -564,9 +404,6 @@ class SelfEditingDiscordBot {
       this.logger.info('TieredStorageManager initialized');
       
       // Initialize ToolRegistry for tool calling support
-      const toolsPath = path.join(process.cwd(), 'src/tools');
-      console.log('[DEBUG-TOOLS] Tool discovery path (absolute):', toolsPath);
-      
       const toolRegistryConfig: ToolRegistryConfig = {
         autoRegisterBuiltinTools: true,
         enablePermissions: true,
@@ -577,21 +414,14 @@ class SelfEditingDiscordBot {
         enableDependencyManagement: true,
         maxTools: 100,
         toolDiscoveryPaths: [
-          toolsPath,
+          './src/tools',
         ],
         enableRateLimiting: true,
       };
       const toolRegistry = new ToolRegistry(toolRegistryConfig, this.logger);
       
       // Discover tools from configured paths
-      console.log('[DEBUG-TOOLS] Starting tool discovery...');
-      const discoveryResult = await toolRegistry.discoverTools();
-      console.log('[DEBUG-TOOLS] Tool discovery completed:', {
-        discovered: discoveryResult.discovered,
-        registered: discoveryResult.registered,
-        failed: discoveryResult.failed,
-        errors: discoveryResult.errors
-      });
+      await toolRegistry.discoverTools();
       this.logger.info('ToolRegistry initialized and tools discovered');
       
       this.discordBotIntegration = await createDiscordBotIntegration({
@@ -804,20 +634,14 @@ class SelfEditingDiscordBot {
             this.logger.info(`[CONV] processMessage returned response: ${response ? 'YES' : 'NO'} (length: ${response?.content?.length || 0})`);
             
             if (response) {
-              // Validate response content is not empty or whitespace-only before sending
-              // This prevents Discord API error 50006 when AI returns empty responses
-              if (!response.content || response.content.trim().length === 0) {
-                this.logger.warn(`[CONV] AI returned empty response for message ${message.id} - skipping send`);
-              } else {
-                // Send conversational response with length handling
-                const result = await sendLongReply(message, response.content, {
-                  strategy: 'split',
-                  addContinuationMarkers: true,
-                  maxMessages: 10,
-                  logger: this.logger,
-                });
-                this.logger.info(`[CONV] Conversational reply sent for message ${message.id} (${result.messageCount} message(s))`);
-              }
+              // Send conversational response with length handling
+              const result = await sendLongReply(message, response.content, {
+                strategy: 'split',
+                addContinuationMarkers: true,
+                maxMessages: 10,
+                logger: this.logger,
+              });
+              this.logger.info(`[CONV] Conversational reply sent for message ${message.id} (${result.messageCount} message(s))`);
             }
             this.logger.info(`[CONV] Returning from conversational mode for message ${message.id}`);
             return;

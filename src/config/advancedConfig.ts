@@ -43,7 +43,7 @@ export interface RedisConfig {
 export interface AIConfig {
   provider: 'openai' | 'anthropic' | 'local' | 'custom';
   openai?: {
-    apiKey?: string;
+    apiKey: string;
     organizationId?: string;
     model: string;
     maxTokens: number;
@@ -234,6 +234,7 @@ export interface ConversationalDiscordConfig {
     codeExecution: boolean;
     selfEditing: boolean;
   };
+  ai: AIConfig;
 }
 
 export interface MonitoringConfig {
@@ -254,7 +255,7 @@ export interface MonitoringConfig {
   };
   alerts: {
     enabled: boolean;
-    channels: 'email' | 'slack' | 'webhook' | 'discord' | 'console';
+    channels: ('email' | 'slack' | 'webhook' | 'discord')[];
     thresholds: {
       errorRate: number;
       responseTime: number;
@@ -388,11 +389,11 @@ export class AdvancedConfigManager {
     envOverrides.features = config.features || {};
     
     // Database overrides
-    if (process.env.DB_HOST) envOverrides.database = { ...config.database, host: process.env.DB_HOST };
-    if (process.env.DB_PORT) envOverrides.database = { ...envOverrides.database, port: parseInt(process.env.DB_PORT) };
-    if (process.env.DB_NAME) envOverrides.database = { ...envOverrides.database, database: process.env.DB_NAME };
-    if (process.env.DB_USER) envOverrides.database = { ...envOverrides.database, user: process.env.DB_USER };
-    if (process.env.DB_PASSWORD) envOverrides.database = { ...envOverrides.database, password: process.env.DB_PASSWORD };
+    if (process.env.POSTGRES_HOST) envOverrides.database = { ...config.database, host: process.env.POSTGRES_HOST };
+    if (process.env.POSTGRES_PORT) envOverrides.database = { ...envOverrides.database, port: parseInt(process.env.POSTGRES_PORT) };
+    if (process.env.POSTGRES_DATABASE) envOverrides.database = { ...envOverrides.database, database: process.env.POSTGRES_DATABASE };
+    if (process.env.POSTGRES_USER) envOverrides.database = { ...envOverrides.database, user: process.env.POSTGRES_USER };
+    if (process.env.POSTGRES_PASSWORD) envOverrides.database = { ...envOverrides.database, password: process.env.POSTGRES_PASSWORD };
 
     // Redis overrides
     if (process.env.REDIS_HOST) envOverrides.redis = { ...config.redis, host: process.env.REDIS_HOST };
@@ -436,11 +437,11 @@ export class AdvancedConfigManager {
         process.env.DISCORD_CONVERSATIONAL_EMERGENCY_STOP_PHRASES) {
       
       const currentConvDiscord = envOverrides.conversationalDiscord || convDiscordBase;
-      
       envOverrides.conversationalDiscord = {
         enabled: process.env.DISCORD_CONVERSATIONAL_ENABLED !== undefined
           ? process.env.DISCORD_CONVERSATIONAL_ENABLED === 'true'
-          : currentConvDiscord?.enabled ?? false,
+          : currentConvDiscord?.enabled
+          ?? false,
         mode: (process.env.DISCORD_CONVERSATIONAL_MODE as any)
           ?? currentConvDiscord?.mode
           ?? 'conversational',
@@ -582,6 +583,17 @@ export class AdvancedConfigManager {
           codeExecution: false,
           selfEditing: false,
         },
+        ai: {
+          provider: 'openai',
+          openai: {
+            apiKey: process.env.OPENAI_API_KEY || '',
+            model: 'gpt-4',
+            maxTokens: 4096,
+            temperature: 0.7,
+            timeout: 30000,
+            retryAttempts: 3,
+          },
+        },
       };
     }
 
@@ -625,6 +637,7 @@ export class AdvancedConfigManager {
       ai: {
         provider: 'openai',
         openai: {
+          apiKey: process.env.OPENAI_API_KEY || '',
           model: 'gpt-4',
           maxTokens: 4096,
           temperature: 0.7,
@@ -766,6 +779,17 @@ export class AdvancedConfigManager {
           codeExecution: false,
           selfEditing: false,
         },
+        ai: {
+          provider: 'openai',
+          openai: {
+            apiKey: process.env.OPENAI_API_KEY || '',
+            model: 'gpt-4',
+            maxTokens: 4096,
+            temperature: 0.7,
+            timeout: 30000,
+            retryAttempts: 3,
+          },
+        },
       },
       monitoring: {
         metrics: {
@@ -785,7 +809,7 @@ export class AdvancedConfigManager {
         },
         alerts: {
           enabled: true,
-          channels: 'console',
+          channels: [],
           thresholds: {
             errorRate: 0.05, // 5%
             responseTime: 5000, // 5 seconds
@@ -825,13 +849,18 @@ export class AdvancedConfigManager {
     
     for (const key in overrides) {
       if (overrides[key as keyof AdvancedBotConfig] !== undefined) {
-        if (typeof defaults[key as keyof AdvancedBotConfig] === 'object' && typeof overrides[key as keyof AdvancedBotConfig] === 'object') {
+        const defaultValue = defaults[key as keyof AdvancedBotConfig];
+        const overrideValue = overrides[key as keyof AdvancedBotConfig];
+        
+        if (typeof defaultValue === 'object' && typeof overrideValue === 'object' &&
+            defaultValue !== null && overrideValue !== null &&
+            !Array.isArray(defaultValue) && !Array.isArray(overrideValue)) {
           (merged as any)[key] = this.mergeConfig(
-            defaults[key as keyof AdvancedBotConfig] as any,
-            overrides[key as keyof AdvancedBotConfig] as any
+            defaultValue as any,
+            overrideValue as any
           );
         } else {
-          (merged as any)[key] = overrides[key as keyof AdvancedBotConfig];
+          (merged as any)[key] = overrideValue;
         }
       }
     }

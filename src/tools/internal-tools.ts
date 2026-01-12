@@ -993,88 +993,6 @@ export class InternalToolExecutor {
     }
   }
 
-  /**
-   * Memory Store Tool Implementation
-   */
-  private async memoryStore(parameters: any): Promise<MemoryStoreResult> {
-    const { action, data = {}, options = {} } = parameters;
-    try {
-      this.logger.info('Executing memory store action', { action, data, options });
-      let result: MemoryStoreResult = {
-        success: true,
-        action,
-        timestamp: new Date().toISOString()
-      };
-
-      switch (action) {
-        case 'store': {
-          if (!data.key) throw new BotError('Missing key for store', 'high', { data });
-          const entry: MemoryEntry = {
-            id: `mem_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-            key: data.key,
-            value: data.value,
-            type: data.type || 'short_term',
-            userId: data.userId,
-            context: data.context,
-            tags: data.tags || [],
-            createdAt: new Date().toISOString(),
-            expiresAt: options.ttl ? new Date(Date.now() + options.ttl * 1000).toISOString() : undefined,
-            accessCount: 0,
-            lastAccessed: new Date().toISOString()
-          };
-          this.memory.set(entry.key, entry);
-          result.data = entry;
-          result.count = 1;
-          break;
-        }
-        case 'retrieve': {
-          if (!data.key) throw new BotError('Missing key for retrieve', 'high', { data });
-          const entry = this.memory.get(data.key);
-          if (entry) {
-            entry.accessCount += 1;
-            entry.lastAccessed = new Date().toISOString();
-            result.data = entry;
-            result.count = 1;
-          } else {
-            result.data = null;
-            result.count = 0;
-          }
-          break;
-        }
-        case 'search': {
-          const entries = Array.from(this.memory.values()).filter(e =>
-            (!data.key || e.key.includes(data.key)) &&
-            (!data.userId || e.userId === data.userId)
-          );
-          result.results = entries;
-          result.count = entries.length;
-          break;
-        }
-        case 'delete': {
-          if (!data.key) throw new BotError('Missing key for delete', 'high', { data });
-          const deleted = this.memory.delete(data.key);
-          result.count = deleted ? 1 : 0;
-          break;
-        }
-        case 'clear': {
-          this.memory.clear();
-          result.count = 0;
-          break;
-        }
-        default:
-          throw new BotError(`Unknown memory store action: ${action}`, 'high', { action });
-      }
-      return result;
-    } catch (error: any) {
-      this.logger.error('Failed to execute memory store', error);
-      throw new BotError(
-        `Failed to execute memory store: ${error.message}`,
-        'high',
-        { parameters, originalError: error.message }
-      );
-    }
-  }
-
   // ============================================================================
   // CODE ANALYSIS IMPLEMENTATION
   // ============================================================================
@@ -2239,81 +2157,6 @@ export class InternalToolExecutor {
   }
 
   // ============================================================================
-  // SENTIMENT ANALYSIS IMPLEMENTATION
-  // ============================================================================
-
-  private async sentimentAnalysis(parameters: any): Promise<SentimentAnalysisResult> {
-    const { text, options = {} } = parameters;
-
-    try {
-      // Input validation
-      if (!text || typeof text !== 'string') {
-        throw new BotError('Invalid text parameter', 'high', { text });
-      }
-
-      this.logger.info('Starting sentiment analysis', { textLength: text.length, options });
-
-      // Simple sentiment analysis (keyword-based)
-      const lowerText = text.toLowerCase();
-      let positive = 0, negative = 0, neutral = 0;
-      const positiveWords = ['good', 'great', 'excellent', 'happy', 'love', 'like', 'awesome', 'fantastic'];
-      const negativeWords = ['bad', 'terrible', 'sad', 'hate', 'dislike', 'awful', 'horrible', 'worst'];
-
-      positiveWords.forEach(word => { if (lowerText.includes(word)) positive++; });
-      negativeWords.forEach(word => { if (lowerText.includes(word)) negative++; });
-
-      const total = positive + negative;
-      neutral = total === 0 ? 1 : 0;
-
-      const compound = total === 0 ? 0 : (positive - negative) / total;
-      let label: 'positive' | 'negative' | 'neutral' = 'neutral';
-      if (compound > 0.2) label = 'positive';
-      else if (compound < -0.2) label = 'negative';
-
-      const sentiment: SentimentScore = {
-        positive,
-        negative,
-        neutral,
-        compound,
-        label
-      };
-
-      // Emotions (very basic)
-      const emotions: EmotionScore[] = [];
-      if (positive > 0) {
-        emotions.push({ emotion: 'joy', score: positive / (total || 1), confidence: 0.8, intensity: positive > 2 ? 'high' : 'medium' });
-      }
-      if (negative > 0) {
-        emotions.push({ emotion: 'anger', score: negative / (total || 1), confidence: 0.8, intensity: negative > 2 ? 'high' : 'medium' });
-      }
-      if (neutral) {
-        emotions.push({ emotion: 'neutral', score: 1, confidence: 0.7, intensity: 'low' });
-      }
-
-      // Confidence (simulated)
-      const confidence = Math.min(1, 0.7 + 0.1 * Math.abs(compound));
-
-      const result: SentimentAnalysisResult = {
-        success: true,
-        sentiment,
-        emotions,
-        confidence
-      };
-
-      this.logger.info('Sentiment analysis completed', { label, confidence });
-
-      return result;
-    } catch (error: any) {
-      this.logger.error('Failed to analyze sentiment', error);
-      throw new BotError(
-        `Failed to analyze sentiment: ${error.message}`,
-        'high',
-        { parameters, originalError: error.message }
-      );
-    }
-  }
-
-  // ============================================================================
   // CONTENT MODERATION IMPLEMENTATION
   // ============================================================================
 
@@ -2561,6 +2404,525 @@ export class InternalToolExecutor {
     ];
 
     const avgScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
-        return 1 - avgScore;
+    return Math.min(1, Math.max(0, avgScore));
+  }
+
+  // ============================================================================
+  // SENTIMENT ANALYSIS IMPLEMENTATION
+  // ============================================================================
+
+  private async sentimentAnalysis(parameters: any): Promise<SentimentAnalysisResult> {
+    const { text, options = {} } = parameters;
+
+    try {
+      // Input validation
+      if (!text || typeof text !== 'string') {
+        throw new BotError('Invalid text parameter', 'high', { text });
+      }
+
+      this.logger.info('Starting sentiment analysis', { textLength: text.length, options });
+
+      // Analyze sentiment
+      const sentiment = this.analyzeSentiment(text);
+
+      // Detect emotions
+      const emotions = this.detectEmotions(text);
+
+      // Calculate confidence
+      const confidence = this.calculateSentimentConfidence(sentiment, emotions);
+
+      // Detect trend if requested
+      let trend: SentimentTrend | undefined;
+      if (options.includeTrend) {
+        trend = this.analyzeSentimentTrend(text);
+      }
+
+      // Analyze context if requested
+      let context: SentimentContext | undefined;
+      if (options.includeContext) {
+        context = this.analyzeSentimentContext(text);
+      }
+
+      const result: SentimentAnalysisResult = {
+        success: true,
+        sentiment,
+        emotions,
+        confidence,
+        trend,
+        context
+      };
+
+      this.logger.info('Sentiment analysis completed', {
+        sentiment: sentiment.label,
+        confidence: confidence.toFixed(2),
+        emotionCount: emotions.length
+      });
+
+      return result;
+    } catch (error: any) {
+      this.logger.error('Failed to analyze sentiment', error);
+      throw new BotError(
+        `Failed to analyze sentiment: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
+  }
+
+  private analyzeSentiment(text: string): SentimentScore {
+    const lowerText = text.toLowerCase();
+
+    // Positive words
+    const positiveWords = [
+      'good', 'great', 'excellent', 'amazing', 'wonderful', 'fantastic',
+      'love', 'happy', 'joy', 'excited', 'awesome', 'perfect', 'best',
+      'beautiful', 'brilliant', 'thank', 'thanks', 'appreciate', 'helpful'
+    ];
+
+    // Negative words
+    const negativeWords = [
+      'bad', 'terrible', 'awful', 'horrible', 'hate', 'angry', 'sad',
+      'disappointed', 'frustrated', 'annoying', 'worst', 'stupid',
+      'useless', 'broken', 'fail', 'error', 'problem', 'issue'
+    ];
+
+    const positiveCount = positiveWords.filter(word => lowerText.includes(word)).length;
+    const negativeCount = negativeWords.filter(word => lowerText.includes(word)).length;
+
+    const total = positiveCount + negativeCount;
+    const positive = total > 0 ? positiveCount / total : 0.5;
+    const negative = total > 0 ? negativeCount / total : 0.5;
+    const neutral = 1 - positive - negative;
+
+    const compound = positive - negative;
+
+    let label: 'positive' | 'negative' | 'neutral';
+    if (compound > 0.1) {
+      label = 'positive';
+    } else if (compound < -0.1) {
+      label = 'negative';
+    } else {
+      label = 'neutral';
+    }
+
+    return {
+      positive,
+      negative,
+      neutral: Math.max(0, neutral),
+      compound,
+      label
+    };
+  }
+
+  private detectEmotions(text: string): EmotionScore[] {
+    const lowerText = text.toLowerCase();
+
+    const emotionKeywords: Record<string, string[]> = {
+      joy: ['happy', 'joy', 'excited', 'delighted', 'thrilled', 'ecstatic', 'cheerful'],
+      sadness: ['sad', 'unhappy', 'depressed', 'down', 'miserable', 'gloomy', 'heartbroken'],
+      anger: ['angry', 'furious', 'mad', 'irritated', 'annoyed', 'rage', 'outraged'],
+      fear: ['afraid', 'scared', 'fearful', 'anxious', 'worried', 'nervous', 'terrified'],
+      surprise: ['surprised', 'shocked', 'amazed', 'astonished', 'stunned', 'unexpected'],
+      disgust: ['disgusted', 'repulsed', 'revolted', 'sickened', 'appalled'],
+      anticipation: ['excited', 'eager', 'looking forward', 'anticipating', 'hopeful'],
+      trust: ['trust', 'believe', 'confident', 'rely', 'depend', 'faith']
+    };
+
+    const emotions: EmotionScore[] = [];
+
+    for (const [emotion, keywords] of Object.entries(emotionKeywords)) {
+      const count = keywords.filter(word => lowerText.includes(word)).length;
+      if (count > 0) {
+        const score = Math.min(1, count * 0.3);
+        const confidence = Math.min(1, count * 0.4);
+
+        let intensity: 'low' | 'medium' | 'high';
+        if (score < 0.3) {
+          intensity = 'low';
+        } else if (score < 0.7) {
+          intensity = 'medium';
+        } else {
+          intensity = 'high';
+        }
+
+        emotions.push({
+          emotion,
+          score,
+          confidence,
+          intensity
+        });
       }
     }
+
+    // Sort by score descending
+    return emotions.sort((a, b) => b.score - a.score);
+  }
+
+  private calculateSentimentConfidence(sentiment: SentimentScore, emotions: EmotionScore[]): number {
+    const sentimentConfidence = Math.abs(sentiment.compound);
+    const emotionConfidence = emotions.length > 0
+      ? emotions.reduce((sum, e) => sum + e.confidence, 0) / emotions.length
+      : 0.5;
+
+    return (sentimentConfidence + emotionConfidence) / 2;
+  }
+
+  private analyzeSentimentTrend(text: string): SentimentTrend {
+    // Simplified trend analysis
+    // In production, this would analyze historical data
+    const sentences = text.split(/[.!?]+/).filter(s => s.trim());
+
+    if (sentences.length < 2) {
+      return {
+        direction: 'stable',
+        changeRate: 0
+      };
+    }
+
+    const sentiments = sentences.map(s => this.analyzeSentiment(s).compound);
+    const firstHalf = sentiments.slice(0, Math.floor(sentiments.length / 2));
+    const secondHalf = sentiments.slice(Math.floor(sentiments.length / 2));
+
+    const firstAvg = firstHalf.reduce((sum, s) => sum + s, 0) / firstHalf.length;
+    const secondAvg = secondHalf.reduce((sum, s) => sum + s, 0) / secondHalf.length;
+
+    const changeRate = secondAvg - firstAvg;
+
+    let direction: 'improving' | 'declining' | 'stable';
+    if (changeRate > 0.1) {
+      direction = 'improving';
+    } else if (changeRate < -0.1) {
+      direction = 'declining';
+    } else {
+      direction = 'stable';
+    }
+
+    return {
+      direction,
+      changeRate
+    };
+  }
+
+  private analyzeSentimentContext(text: string): SentimentContext {
+    const lowerText = text.toLowerCase();
+
+    // Detect language (simplified)
+    const language = 'en'; // Default to English
+
+    // Detect topics (keyword-based)
+    const topicKeywords: Record<string, string[]> = {
+      'product': ['product', 'service', 'feature', 'functionality'],
+      'support': ['help', 'support', 'assistance', 'issue', 'problem'],
+      'pricing': ['price', 'cost', 'expensive', 'cheap', 'affordable'],
+      'ui': ['interface', 'design', 'layout', 'look', 'feel'],
+      'performance': ['fast', 'slow', 'performance', 'speed', 'lag']
+    };
+
+    const topics: string[] = [];
+    for (const [topic, keywords] of Object.entries(topicKeywords)) {
+      if (keywords.some(keyword => lowerText.includes(keyword))) {
+        topics.push(topic);
+      }
+    }
+
+    // Detect entities (simplified)
+    const entities: string[] = [];
+    const entityPatterns = [
+      { pattern: /\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+\b/g, type: 'person' },
+      { pattern: /\b[A-Z][a-z]+\s+(?:Inc|Corp|LLC|Ltd)\b/g, type: 'company' }
+    ];
+
+    entityPatterns.forEach(({ pattern }) => {
+      const matches = text.match(pattern);
+      if (matches) {
+        entities.push(...matches);
+      }
+    });
+
+    // Detect sarcasm (simplified)
+    const sarcasmIndicators = ['yeah right', 'sure', 'totally', 'obviously', 'great job'];
+    const sarcasmDetected = sarcasmIndicators.some(indicator => lowerText.includes(indicator));
+
+    // Detect irony (simplified)
+    const ironyDetected = lowerText.includes('ironically') || lowerText.includes('ironic');
+
+    return {
+      language,
+      topics,
+      entities,
+      sarcasmDetected,
+      ironyDetected
+    };
+  }
+
+  // ============================================================================
+  // MEMORY STORE IMPLEMENTATION
+  // ============================================================================
+
+  private async memoryStore(parameters: any): Promise<MemoryStoreResult> {
+    const { action, data, options = {} } = parameters;
+
+    try {
+      // Input validation
+      if (!action || typeof action !== 'string') {
+        throw new BotError('Invalid action parameter', 'high', { action });
+      }
+
+      const validActions = ['store', 'retrieve', 'search', 'delete', 'clear'];
+      if (!validActions.includes(action)) {
+        throw new BotError(
+          `Invalid action: ${action}. Must be one of: ${validActions.join(', ')}`,
+          'high',
+          { action }
+        );
+      }
+
+      this.logger.info('Memory store operation', { action, options });
+
+      let result: MemoryStoreResult;
+
+      switch (action) {
+        case 'store':
+          result = this.storeMemory(data, options);
+          break;
+        case 'retrieve':
+          result = this.retrieveMemory(data, options);
+          break;
+        case 'search':
+          result = this.searchMemory(data, options);
+          break;
+        case 'delete':
+          result = this.deleteMemory(data, options);
+          break;
+        case 'clear':
+          result = this.clearMemory(options);
+          break;
+        default:
+          throw new BotError(`Unknown action: ${action}`, 'high', { action });
+      }
+
+      this.logger.info('Memory store operation completed', {
+        action,
+        success: result.success,
+        count: result.count
+      });
+
+      return result;
+    } catch (error: any) {
+      this.logger.error('Failed to perform memory operation', error);
+      throw new BotError(
+        `Failed to perform memory operation: ${error.message}`,
+        'high',
+        { parameters, originalError: error.message }
+      );
+    }
+  }
+
+  private storeMemory(data: any, options: any): MemoryStoreResult {
+    if (!data || !data.key || data.value === undefined) {
+      throw new BotError('Invalid data for store operation', 'high', { data });
+    }
+
+    const entry: MemoryEntry = {
+      id: `mem_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+      key: data.key,
+      value: data.value,
+      type: data.type || 'medium_term',
+      userId: data.userId,
+      context: data.context,
+      tags: data.tags || [],
+      createdAt: new Date().toISOString(),
+      expiresAt: options.ttl ? new Date(Date.now() + options.ttl * 1000).toISOString() : undefined,
+      accessCount: 0,
+      lastAccessed: new Date().toISOString()
+    };
+
+    this.memory.set(entry.id, entry);
+
+    return {
+      success: true,
+      action: 'store',
+      data: entry,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  private retrieveMemory(data: any, options: any): MemoryStoreResult {
+    if (!data || !data.id) {
+      throw new BotError('Invalid data for retrieve operation', 'high', { data });
+    }
+
+    const entry = this.memory.get(data.id);
+
+    if (!entry) {
+      return {
+        success: false,
+        action: 'retrieve',
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    // Check if expired
+    if (entry.expiresAt && new Date(entry.expiresAt) < new Date()) {
+      this.memory.delete(data.id);
+      return {
+        success: false,
+        action: 'retrieve',
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    // Update access count and last accessed
+    entry.accessCount++;
+    entry.lastAccessed = new Date().toISOString();
+
+    return {
+      success: true,
+      action: 'retrieve',
+      data: entry,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  private searchMemory(data: any, options: any): MemoryStoreResult {
+    const query = data?.query || '';
+    const userId = data?.userId;
+    const type = data?.type;
+    const tags = data?.tags;
+
+    const entries: MemoryEntry[] = [];
+    const relevanceScores: Map<string, number> = new Map();
+
+    this.memory.forEach((entry, id) => {
+      // Check if expired
+      if (entry.expiresAt && new Date(entry.expiresAt) < new Date()) {
+        return;
+      }
+
+      // Filter by user ID if provided
+      if (userId && entry.userId !== userId) {
+        return;
+      }
+
+      // Filter by type if provided
+      if (type && entry.type !== type) {
+        return;
+      }
+
+      // Filter by tags if provided
+      if (tags && tags.length > 0) {
+        const hasAllTags = tags.every((tag: string) => entry.tags?.includes(tag));
+        if (!hasAllTags) {
+          return;
+        }
+      }
+
+      // Calculate relevance score
+      let score = 0;
+
+      // Key match
+      if (entry.key.toLowerCase().includes(query.toLowerCase())) {
+        score += 0.5;
+      }
+
+      // Value match (for string values)
+      if (typeof entry.value === 'string' && entry.value.toLowerCase().includes(query.toLowerCase())) {
+        score += 0.3;
+      }
+
+      // Context match
+      if (entry.context && entry.context.toLowerCase().includes(query.toLowerCase())) {
+        score += 0.2;
+      }
+
+      // Tag match
+      if (entry.tags?.some(tag => tag.toLowerCase().includes(query.toLowerCase()))) {
+        score += 0.2;
+      }
+
+      // Recency boost
+      const age = Date.now() - new Date(entry.createdAt).getTime();
+      const recencyBoost = Math.max(0, 1 - age / (30 * 24 * 60 * 60 * 1000)); // 30 days
+      score += recencyBoost * 0.1;
+
+      if (score > 0) {
+        entries.push(entry);
+        relevanceScores.set(id, score);
+      }
+    });
+
+    // Sort by relevance score
+    entries.sort((a, b) => (relevanceScores.get(b.id) || 0) - (relevanceScores.get(a.id) || 0));
+
+    // Limit results
+    const limit = options.limit || 10;
+    const limitedEntries = entries.slice(0, limit);
+
+    return {
+      success: true,
+      action: 'search',
+      results: limitedEntries,
+      count: limitedEntries.length,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  private deleteMemory(data: any, options: any): MemoryStoreResult {
+    if (!data || !data.id) {
+      throw new BotError('Invalid data for delete operation', 'high', { data });
+    }
+
+    const deleted = this.memory.delete(data.id);
+
+    return {
+      success: deleted,
+      action: 'delete',
+      count: deleted ? 1 : 0,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  private clearMemory(options: any): MemoryStoreResult {
+    const userId = options.userId;
+    const type = options.type;
+
+    let count = 0;
+
+    if (userId || type) {
+      // Clear filtered entries
+      const toDelete: string[] = [];
+
+      this.memory.forEach((entry, id) => {
+        let shouldDelete = true;
+
+        if (userId && entry.userId !== userId) {
+          shouldDelete = false;
+        }
+
+        if (type && entry.type !== type) {
+          shouldDelete = false;
+        }
+
+        if (shouldDelete) {
+          toDelete.push(id);
+        }
+      });
+
+      toDelete.forEach(id => {
+        this.memory.delete(id);
+        count++;
+      });
+    } else {
+      // Clear all entries
+      count = this.memory.size;
+      this.memory.clear();
+    }
+
+    return {
+      success: true,
+      action: 'clear',
+      count,
+      timestamp: new Date().toISOString()
+    };
+  }
+}

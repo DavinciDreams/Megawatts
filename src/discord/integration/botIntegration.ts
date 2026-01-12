@@ -30,22 +30,22 @@ export interface DiscordBotIntegration {
    * Process a Discord message through appropriate handler
    */
   processMessage(message: Message): Promise<ConversationResponse | null>;
-  
+
   /**
    * Check if conversational mode is enabled
    */
   isConversationalMode(): boolean;
-  
+
   /**
    * Check if a message should be handled by conversational mode
    */
   shouldUseConversationalMode(message: Message): boolean;
-  
+
   /**
    * Get conversation handler instance
    */
   getConversationHandler(): DiscordConversationHandler | null;
-  
+
   /**
    * Update configuration
    */
@@ -61,22 +61,22 @@ export interface DiscordBotIntegrationOptions {
    * Discord client instance
    */
   client: Client;
-  
+
   /**
    * Conversational Discord configuration
    */
   config: ConversationalDiscordConfig;
-  
+
   /**
    * AI configuration for provider router
    */
   aiConfig: AIConfiguration;
-  
+
   /**
    * Logger instance
    */
   logger: Logger;
-  
+
   /**
    * Optional: Pre-configured instances for dependency injection
    */
@@ -100,7 +100,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
   private config: ConversationalDiscordConfig;
   private aiConfig: AIConfiguration;
   private logger: Logger;
-  
+
   // Core components
   private conversationHandler: DiscordConversationHandler | null = null;
   private conversationManager: ConversationManager | null = null;
@@ -111,7 +111,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
   private contextManager: ContextManager | null = null;
   private tieredStorage: TieredStorageManager | null = null;
   private toolRegistry: ToolRegistry | null = null;
-  
+
   // State tracking
   private initialized = false;
   private commandPrefix = '!';
@@ -119,12 +119,12 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
   constructor(options: DiscordBotIntegrationOptions) {
     // Validate required config fields
     this.validateConfig(options.config, options.aiConfig);
-    
+
     this.client = options.client;
     this.config = options.config;
     this.aiConfig = options.aiConfig;
     this.logger = options.logger;
-    
+
     // Use injected instances if provided
     if (options.conversationHandler) {
       this.conversationHandler = options.conversationHandler;
@@ -153,13 +153,13 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
     if (options.toolRegistry) {
       this.toolRegistry = options.toolRegistry;
     }
-    
+
     this.logger.info('DiscordBotIntegration created', {
       conversationalEnabled: this.config.enabled,
       mode: this.config.mode,
     });
   }
-  
+
   /**
    * Validate configuration before initialization
    */
@@ -168,7 +168,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
     aiConfig: AIConfiguration
   ): void {
     const errors: string[] = [];
-    
+
     // Validate conversational config
     if (!config) {
       errors.push('ConversationalDiscordConfig is required');
@@ -189,7 +189,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
         errors.push('config.memory.mediumTermRetentionDays is required');
       }
     }
-    
+
     // Validate AI config
     if (!aiConfig) {
       errors.push('AIConfiguration is required');
@@ -211,14 +211,14 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
         errors.push('aiConfig.providers.anthropic.apiKey is required when anthropic provider is enabled');
       }
     }
-    
+
     if (errors.length > 0) {
       throw new Error(
         `Configuration validation failed:\n${errors.map(e => `  - ${e}`).join('\n')}`
       );
     }
   }
-  
+
   /**
    * Initialize integration and all its components
    */
@@ -227,28 +227,28 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       this.logger.warn('DiscordBotIntegration already initialized');
       return;
     }
-    
+
     try {
       this.logger.info('Initializing DiscordBotIntegration...');
-      
+
       // Initialize components if not already provided
       await this.initializeComponents();
-      
+
       // Setup event handlers
       this.setupEventHandlers();
-      
+
       this.initialized = true;
       this.logger.info('DiscordBotIntegration initialized successfully', {
         conversationalEnabled: this.config.enabled,
         mode: this.config.mode,
       });
-      
+
     } catch (error) {
       this.logger.error('Failed to initialize DiscordBotIntegration', error as Error);
       throw error;
     }
   }
-  
+
   /**
    * Initialize all required components
    */
@@ -272,7 +272,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       this.contextManager = new ContextManager(contextManagerConfig, this.logger);
       this.logger.debug('ContextManager initialized');
     }
-    
+
     // Initialize TieredStorageManager if not provided
     if (!this.tieredStorage) {
       throw new Error(
@@ -281,7 +281,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
         'before creating DiscordBotIntegration.'
       );
     }
-    
+
     // Initialize ConversationManager if not provided
     // IMPORTANT: This must be initialized BEFORE DiscordContextManager because DiscordContextManager depends on it
     if (!this.conversationManager) {
@@ -299,7 +299,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       );
       this.logger.debug('ConversationManager initialized');
     }
-    
+
     // Initialize DiscordContextManager if not provided
     // IMPORTANT: This must be initialized AFTER ConversationManager because it depends on it
     if (!this.discordContextManager) {
@@ -312,7 +312,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       );
       this.logger.debug('DiscordContextManager initialized');
     }
-    
+
     // Initialize AIProviderRouter if not provided
     if (!this.aiProviderRouter) {
       this.aiProviderRouter = new ConversationalAIProviderRouter(
@@ -324,7 +324,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       // Register AI providers based on configuration
       this.registerAIProviders();
     }
-    
+
     // Initialize EmotionalIntelligenceEngine if not provided
     if (!this.emotionalIntelligenceEngine) {
       this.emotionalIntelligenceEngine = new EmotionalIntelligenceEngine(
@@ -333,7 +333,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       );
       this.logger.debug('EmotionalIntelligenceEngine initialized');
     }
-    
+
     // Initialize EmergencyStopHandler if not provided
     if (!this.emergencyStopHandler) {
       this.emergencyStopHandler = new EmergencyStopHandler(
@@ -342,7 +342,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       );
       this.logger.debug('EmergencyStopHandler initialized');
     }
-    
+
     // Initialize DiscordConversationHandler if not provided
     if (!this.conversationHandler) {
       this.conversationHandler = new DiscordConversationHandler(
@@ -358,16 +358,16 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       this.logger.debug('DiscordConversationHandler initialized');
     }
   }
-  
+
   /**
-   * Register AI providers with router based on configuration
+   * Register AI providers with the router based on configuration
    */
   private registerAIProviders(): void {
     if (!this.aiProviderRouter) {
       this.logger.warn('Cannot register providers - router not initialized');
       return;
     }
-    
+
     const { providers } = this.aiConfig;
     
     // DEBUG: Log provider configuration
@@ -378,7 +378,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
     this.logger.info(`[AI-PROVIDER-REG] Anthropic enabled: ${providers?.anthropic?.enabled}`);
     this.logger.info(`[AI-PROVIDER-REG] Anthropic API key exists: ${!!providers?.anthropic?.apiKey}`);
     this.logger.info(`[AI-PROVIDER-REG] Anthropic API key length: ${providers?.anthropic?.apiKey?.length || 0}`);
-    
+
     // Register OpenAI provider if configured
     if (providers?.openai?.enabled && providers.openai.apiKey) {
       this.logger.info('[AI-PROVIDER-REG] Registering OpenAI provider - enabled and API key present');
@@ -394,12 +394,9 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       this.aiProviderRouter.registerProvider('openai', openaiProvider);
       this.logger.info('OpenAI provider registered');
     } else {
-      this.logger.warn('[AI-PROVIDER-REG] OpenAI NOT registered', {
-        enabled: providers?.openai?.enabled,
-        apiKeyPresent: !!providers?.openai?.apiKey,
-      });
+      this.logger.warn('[AI-PROVIDER-REG] OpenAI NOT registered', { enabled: providers?.openai?.enabled, apiKeyPresent: !!providers?.openai?.apiKey });
     }
-    
+
     // Register Anthropic provider if configured
     if (providers?.anthropic?.enabled && providers.anthropic.apiKey) {
       this.logger.info('[AI-PROVIDER-REG] Registering Anthropic provider - enabled and API key present');
@@ -415,12 +412,9 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       this.aiProviderRouter.registerProvider('anthropic', anthropicProvider);
       this.logger.info('Anthropic provider registered');
     } else {
-      this.logger.warn('[AI-PROVIDER-REG] Anthropic NOT registered', {
-        enabled: providers?.anthropic?.enabled,
-        apiKeyPresent: !!providers?.anthropic?.apiKey,
-      });
+      this.logger.warn('[AI-PROVIDER-REG] Anthropic NOT registered', { enabled: providers?.anthropic?.enabled, apiKeyPresent: !!providers?.anthropic?.apiKey });
     }
-    
+
     // Register Local model provider if configured
     if (providers?.local?.enabled) {
       this.logger.info('[AI-PROVIDER-REG] Registering Local provider - enabled');
@@ -436,51 +430,36 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       this.aiProviderRouter.registerProvider('local', localProvider);
       this.logger.info('Local model provider registered');
     } else {
-      this.logger.warn('[AI-PROVIDER-REG] Local NOT registered', {
-        enabled: providers?.local?.enabled,
-      });
+      this.logger.warn('[AI-PROVIDER-REG] Local NOT registered', { enabled: providers?.local?.enabled });
     }
-    
+
     const registeredProviders = this.aiProviderRouter.getProviders();
     this.logger.info('AI providers registered', {
       count: registeredProviders.size,
       providers: Array.from(registeredProviders.keys()),
     });
   }
-  
+
   /**
    * Setup event handlers for Discord client
    */
   private setupEventHandlers(): void {
-    // Check if client is already ready
-    if (this.client.isReady()) {
-      this.logger.info('Discord client already ready, setting client on tool executor immediately');
-      if (this.conversationHandler) {
-        this.conversationHandler.setDiscordClient(this.client);
-        this.logger.info('Discord client set on conversation handler tool executor');
-      }
-    } else {
-      // Register ready event listener for when client connects
-      this.client.on('ready', () => {
-        this.logger.info('Discord client ready, integration active');
-        if (this.conversationHandler) {
-          this.conversationHandler.setDiscordClient(this.client);
-          this.logger.info('Discord client set on conversation handler tool executor');
-        }
-      });
-    }
-    
+    // Handle client ready
+    this.client.once('clientReady', () => {
+      this.logger.info('Discord client ready, integration active');
+    });
+
     // Handle disconnection
     this.client.on('disconnect', () => {
       this.logger.warn('Discord client disconnected');
     });
-    
+
     // Handle reconnection
     this.client.on('reconnecting', () => {
       this.logger.info('Discord client reconnecting');
     });
   }
-  
+
   /**
    * Process a Discord message through appropriate handler
    */
@@ -489,20 +468,20 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
     if (message.author.bot) {
       return null;
     }
-    
+
     // Check if conversational mode should be used
     if (!this.shouldUseConversationalMode(message)) {
       // Return null to indicate message should be handled by command handler
       return null;
     }
-    
+
     try {
       // Convert Discord message to internal format
       const discordMessage = this.convertDiscordMessage(message);
-      
+
       // Process through conversation handler
       const response = await this.conversationHandler!.processMessage(discordMessage);
-      
+
       // Check if response was skipped
       if (response.metadata?.skipped) {
         this.logger.debug('Message skipped by conversational handler', {
@@ -510,15 +489,15 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
         });
         return null;
       }
-      
+
       this.logger.debug('Message processed through conversational handler', {
         messageId: message.id,
         userId: message.author.id,
         responseLength: response.content.length,
       });
-      
+
       return response;
-      
+
     } catch (error) {
       const errorObj = error instanceof Error ? error : new Error(String(error));
       this.logger.error('Failed to process message through conversational handler', errorObj, {
@@ -528,7 +507,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
         errorMessage: errorObj.message,
         errorStack: errorObj.stack,
       });
-      
+
       // Return error response with full error details
       return {
         content: 'I apologize, but I encountered an error processing your message.',
@@ -545,14 +524,14 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       };
     }
   }
-  
+
   /**
    * Check if conversational mode is enabled
    */
   isConversationalMode(): boolean {
     return this.config.enabled;
   }
-  
+
   /**
    * Check if a message should be handled by conversational mode
    */
@@ -561,27 +540,27 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
     if (!this.config.enabled) {
       return false;
     }
-    
+
     // Check mode
     switch (this.config.mode) {
       case 'conversational':
         // All messages go through conversational handler
         return true;
-      
+
       case 'command':
         // All messages go through command handler
         return false;
-      
+
       case 'hybrid':
         // Messages starting with prefix go to command handler
         // All other messages go to conversational handler
         return !message.content.startsWith(this.commandPrefix);
-      
+
       default:
         return false;
     }
   }
-  
+
   /**
    * Convert Discord.js Message to internal DiscordMessage format
    */
@@ -601,45 +580,58 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
       mentions: message.mentions.users.map(user => user.id),
     };
   }
-  
+
   /**
    * Get conversation handler instance
    */
   getConversationHandler(): DiscordConversationHandler | null {
     return this.conversationHandler;
   }
-  
+
   /**
    * Update configuration
    */
   updateConfig(config: Partial<ConversationalDiscordConfig>): void {
     this.config = { ...this.config, ...config };
-    
-    // Note: DiscordConversationHandler doesn't have updateConfig method
-    // Config is updated via constructor in this implementation
-    // To update config, a new handler instance would need to be created
-    
+
+    // Update conversation handler config if it exists
+    if (this.conversationHandler) {
+      this.conversationHandler.updateConfig(config);
+    }
+
     this.logger.info('Configuration updated', { config });
   }
-  
+
   /**
    * Cleanup and shutdown integration
    */
   async shutdown(): Promise<void> {
     this.logger.info('Shutting down DiscordBotIntegration...');
-    
-    // Note: DiscordConversationHandler doesn't have getActiveConversations method
-    // The active conversations are managed internally by the handler
-    // Cleanup would be handled by the handler's own shutdown logic
+
+    // Cleanup conversation handler
+    if (this.conversationHandler) {
+      // End all active conversations
+      const activeConversations = this.conversationHandler.getActiveConversations();
+      for (const [conversationId] of activeConversations) {
+        try {
+          await this.conversationHandler.endConversation(conversationId);
+        } catch (error) {
+          this.logger.error(`Failed to end conversation ${conversationId}`, error as Error);
+        }
+      }
+    }
+
+    this.initialized = false;
+    this.logger.info('DiscordBotIntegration shut down');
   }
-  
+
   /**
    * Get current configuration
    */
   getConfig(): ConversationalDiscordConfig {
     return { ...this.config };
   }
-  
+
   /**
    * Set command prefix for hybrid mode
    */
@@ -647,7 +639,7 @@ export class DiscordBotIntegrationImpl implements DiscordBotIntegration {
     this.commandPrefix = prefix;
     this.logger.info('Command prefix updated', { prefix });
   }
-  
+
   /**
    * Get command prefix
    */

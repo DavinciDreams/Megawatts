@@ -1,14 +1,17 @@
 import { Logger } from '../../utils/logger';
-import { StorageError, StorageErrorCode } from '../errors';
+import { StorageError, StorageErrorCode } from '../errors/storageError';
 import { PostgresConnectionManager } from '../database/postgres';
 import { RedisConnectionManager } from '../database/redis';
 import { DataLifecycleManager } from './dataLifecycle';
 import { RetentionPolicyManager } from './retentionPolicy';
+import { S3Client, S3Config } from '../s3';
 import { promisify } from 'util';
 import * as zlib from 'zlib';
 
 const deflate = promisify(zlib.deflate);
 const inflate = promisify(zlib.inflate);
+const gzip = promisify(zlib.gzip);
+const gunzip = promisify(zlib.gunzip);
 
 /**
  * Storage tier enumeration representing different data storage levels
@@ -16,7 +19,7 @@ const inflate = promisify(zlib.inflate);
 export enum StorageTier {
   HOT = 'hot',      // Redis - Frequently accessed data
   WARM = 'warm',    // PostgreSQL - Recently accessed data
-  COLD = 'cold',    // PostgreSQL with compression - Historical data
+  COLD = 'cold',    // S3/MinIO with compression - Historical data
   BACKUP = 'backup' // Encrypted cloud storage - Long-term archival
 }
 
@@ -51,6 +54,7 @@ export interface TieredStorageConfig {
     enabled: boolean;
     retentionDays: number;
     compressionEnabled: boolean;
+    useS3: boolean; // Use S3/MinIO for cold tier
   };
   backup: {
     enabled: boolean;
@@ -62,6 +66,7 @@ export interface TieredStorageConfig {
     intervalMinutes: number;
     batchSize: number;
   };
+  s3?: S3Config; // S3/MinIO configuration for cold tier
 }
 
 /**
@@ -126,6 +131,7 @@ export class TieredStorageManager {
   private logger: Logger;
   private postgres: PostgresConnectionManager;
   private redis: RedisConnectionManager;
+  private s3Client?: S3Client;
   private lifecycleManager: DataLifecycleManager;
   private policyManager: RetentionPolicyManager;
   private config: TieredStorageConfig;
@@ -149,6 +155,11 @@ export class TieredStorageManager {
     this.config = this.getDefaultConfig(config);
     this.lifecycleManager = new DataLifecycleManager(this.postgres, this.redis);
     this.policyManager = new RetentionPolicyManager(this.postgres);
+
+    // Initialize S3 client if configured
+    if (this.config.s3 && this.config.cold.useS3) {
+      this.s3Client = new S3Client(this.logger, this.config.s3);
+    }
   }
 
   /**
@@ -170,7 +181,8 @@ export class TieredStorageManager {
       cold: {
         enabled: config.cold?.enabled ?? true,
         retentionDays: config.cold?.retentionDays ?? 90,
-        compressionEnabled: config.cold?.compressionEnabled ?? true
+        compressionEnabled: config.cold?.compressionEnabled ?? true,
+        useS3: config.cold?.useS3 ?? false
       },
       backup: {
         enabled: config.backup?.enabled ?? false,
@@ -181,7 +193,8 @@ export class TieredStorageManager {
         enabled: config.migration?.enabled ?? true,
         intervalMinutes: config.migration?.intervalMinutes ?? 60,
         batchSize: config.migration?.batchSize ?? 100
-      }
+      },
+      s3: config.s3
     };
   }
 
@@ -201,6 +214,13 @@ export class TieredStorageManager {
 
       // Initialize policy manager
       await this.policyManager.initialize();
+
+      // Initialize S3 client if configured for cold tier
+      if (this.s3Client && this.config.cold.useS3) {
+        this.logger.info('Initializing S3/MinIO client for cold tier...');
+        await this.s3Client.initialize();
+        this.logger.info('S3/MinIO client initialized successfully for cold tier');
+      }
 
       // Start migration scheduler if enabled
       if (this.config.migration.enabled) {
@@ -517,6 +537,12 @@ export class TieredStorageManager {
     try {
       this.logger.info('Shutting down tiered storage system...');
 
+      // Close S3 client if configured
+      if (this.s3Client) {
+        await this.s3Client.close();
+        this.logger.info('S3/MinIO client closed');
+      }
+
       if (this.migrationTimer) {
         clearInterval(this.migrationTimer);
       }
@@ -636,13 +662,33 @@ export class TieredStorageManager {
   }
 
   /**
-   * Stores data in cold tier (PostgreSQL with compression)
+   * Stores data in cold tier (S3/MinIO with compression)
    */
   private async storeInColdTier(
     key: string,
     value: any,
     metadata: DataMetadata
   ): Promise<void> {
+    // Use S3/MinIO if configured
+    if (this.s3Client && this.config.cold.useS3) {
+      const serializedValue = JSON.stringify(value);
+      const dataBuffer = Buffer.from(serializedValue);
+
+      await this.s3Client.upload(key, dataBuffer, {
+        contentType: 'application/json',
+        metadata: {
+          'data-type': metadata.dataType,
+          'tier': 'cold',
+          'created-at': metadata.createdAt.toISOString()
+        },
+        compress: this.config.cold.compressionEnabled
+      });
+
+      await this.updateMetadata(metadata);
+      return;
+    }
+
+    // Fallback to PostgreSQL
     if (!this.postgres) {
       this.logger.warn('PostgreSQL not available, skipping cold tier storage');
       return;
@@ -723,6 +769,20 @@ export class TieredStorageManager {
    * Retrieves data from cold tier
    */
   private async retrieveFromColdTier<T>(key: string): Promise<T | null> {
+    // Use S3/MinIO if configured
+    if (this.s3Client && this.config.cold.useS3) {
+      try {
+        const data = await this.s3Client.download(key, {
+          decompress: this.config.cold.compressionEnabled
+        });
+        return JSON.parse(data.toString('utf-8')) as T;
+      } catch (error) {
+        this.logger.warn(`Failed to retrieve ${key} from S3 cold tier`, error);
+        return null;
+      }
+    }
+
+    // Fallback to PostgreSQL
     if (!this.postgres) {
       this.logger.warn('PostgreSQL not available, skipping cold tier retrieval');
       return null;
@@ -787,6 +847,17 @@ export class TieredStorageManager {
    * Deletes data from cold tier
    */
   private async deleteFromColdTier(key: string): Promise<void> {
+    // Use S3/MinIO if configured
+    if (this.s3Client && this.config.cold.useS3) {
+      try {
+        await this.s3Client.delete(key);
+      } catch (error) {
+        this.logger.warn(`Failed to delete ${key} from S3 cold tier`, error);
+      }
+      return;
+    }
+
+    // Fallback to PostgreSQL
     if (!this.postgres) {
       this.logger.warn('PostgreSQL not available, skipping cold tier deletion');
       return;
@@ -1103,6 +1174,17 @@ export class TieredStorageManager {
    * Gets statistics for cold tier
    */
   private async getColdTierStats(): Promise<{ itemCount: number; totalSize: number; compressedSize: number }> {
+    // Use S3/MinIO stats if configured
+    if (this.s3Client && this.config.cold.useS3) {
+      const stats = this.s3Client.getStats();
+      return {
+        itemCount: stats.uploads, // Approximate item count from uploads
+        totalSize: stats.bytesUploaded,
+        compressedSize: stats.bytesUploaded * 0.6 // Approximate compression ratio
+      };
+    }
+
+    // Fallback to PostgreSQL
     if (!this.postgres) {
       this.logger.warn('PostgreSQL not available, returning default cold tier stats');
       return {
@@ -1155,54 +1237,19 @@ export class TieredStorageManager {
   }
 
   /**
-   * Compresses data using zlib deflate algorithm
-   * Handles both string and buffer inputs
-   * @param data - Data to compress (string or Buffer)
-   * @returns Compressed data as base64-encoded string for storage
+   * Compresses a string using zlib gzip
    */
-  private async compress(data: string | Buffer): Promise<string> {
-    try {
-      // Convert string to Buffer if necessary
-      const inputBuffer = typeof data === 'string' ? Buffer.from(data, 'utf8') : data;
-      
-      // Compress using deflate algorithm
-      const compressedBuffer = await deflate(inputBuffer);
-      
-      // Convert to base64 for storage in database
-      return compressedBuffer.toString('base64');
-    } catch (error) {
-      this.logger.error('Failed to compress data:', error);
-      throw new StorageError(
-        StorageErrorCode.OPERATION_FAILED,
-        'Failed to compress data',
-        { error: error instanceof Error ? error.message : String(error) }
-      );
-    }
+  private async compress(data: string): Promise<Buffer> {
+    const dataBuffer = Buffer.from(data, 'utf-8');
+    return await gzip(dataBuffer);
   }
 
   /**
-   * Decompresses data using zlib inflate algorithm
-   * Handles base64-encoded compressed data
-   * @param data - Compressed data (base64-encoded string)
-   * @returns Decompressed data as string
+   * Decompresses a string using zlib gunzip
    */
   private async decompress(data: string): Promise<string> {
-    try {
-      // Convert base64 string back to Buffer
-      const compressedBuffer = Buffer.from(data, 'base64');
-      
-      // Decompress using inflate algorithm
-      const decompressedBuffer = await inflate(compressedBuffer);
-      
-      // Convert Buffer to string
-      return decompressedBuffer.toString('utf8');
-    } catch (error) {
-      this.logger.error('Failed to decompress data:', error);
-      throw new StorageError(
-        StorageErrorCode.OPERATION_FAILED,
-        'Failed to decompress data',
-        { error: error instanceof Error ? error.message : String(error) }
-      );
-    }
+    const dataBuffer = Buffer.from(data, 'binary');
+    const decompressedBuffer = await gunzip(dataBuffer);
+    return decompressedBuffer.toString('utf-8');
   }
 }

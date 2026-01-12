@@ -60,7 +60,7 @@ import { RedisConnectionManager } from '../storage/database/redis';
 import { MultiLevelCache, CacheLayer, type MultiLevelCacheConfig } from './multiLevelCache';
 import { CacheInvalidationManager, type TTLConfig, type EventInvalidationConfig, type DependencyInvalidationConfig } from './cacheInvalidation';
 import { CachePolicyManager, EvictionPolicy } from './cachePolicies';
-import { CacheWarmer, type WarmUpConfig, WarmUpStrategy } from './cacheWarmer';
+import { CacheWarmer, WarmUpStrategy, type WarmUpConfig } from './cacheWarmer';
 
 /**
  * Advanced cache system configuration
@@ -100,8 +100,6 @@ export interface AdvancedCacheSystemConfig {
     parallelism?: number;
     enablePredictiveWarming?: boolean;
     predictiveThreshold?: number;
-    accessPatternWindow?: number;
-    maxPredictiveKeys?: number;
   };
 }
 
@@ -203,8 +201,6 @@ export class AdvancedCacheSystem {
         parallelism: 5,
         enablePredictiveWarming: true,
         predictiveThreshold: 0.7,
-        accessPatternWindow: 3600000,
-        maxPredictiveKeys: 20,
       },
     });
   }

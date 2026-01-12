@@ -272,6 +272,17 @@ export class ConversationalConfigManager {
         codeExecution: false,
         selfEditing: false,
       },
+      ai: {
+        provider: 'openai',
+        openai: {
+          apiKey: '',
+          model: 'gpt-4',
+          maxTokens: 4096,
+          temperature: 0.7,
+          timeout: 30000,
+          retryAttempts: 3,
+        },
+      },
     };
   }
 

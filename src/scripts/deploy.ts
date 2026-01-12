@@ -112,10 +112,10 @@ class DeployScript {
     // Check environment variables
     const requiredEnvVars = [
       'DISCORD_TOKEN',
-      'DB_HOST',
-      'DB_USER',
-      'DB_PASSWORD',
-      'DB_NAME',
+      'POSTGRES_HOST',
+      'POSTGRES_USER',
+      'POSTGRES_PASSWORD',
+      'POSTGRES_DATABASE',
       'REDIS_HOST',
       'REDIS_PASSWORD'
     ];
